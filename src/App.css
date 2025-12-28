@@ -1326,7 +1326,7 @@ form {
 }
 
 .logout-btn {
-  padding: 0.5rem 1rem;
+  padding: 0.6rem;
   background: rgba(255, 107, 107, 0.1);
   border: 1px solid rgba(255, 107, 107, 0.3);
   border-radius: 8px;
@@ -1336,6 +1336,12 @@ form {
   font-weight: 500;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 48px;
+  height: 48px;
 }
 
 .logout-btn:hover {
@@ -1343,6 +1349,16 @@ form {
   border-color: rgba(255, 107, 107, 0.5);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+}
+
+.logout-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+  display: inline-block;
+}
+
+.logout-text {
+  display: none;
 }
 
 .tag-manager-content {
@@ -1707,6 +1723,16 @@ form {
   .add-task-icon {
     font-size: 1.2rem;
   }
+
+  .logout-text {
+    display: inline;
+  }
+
+  .logout-btn {
+    padding: 0.5rem 1rem;
+    min-width: auto;
+    width: auto;
+  }
 }
 
 .day-nav-header {
@@ -1885,23 +1911,27 @@ form {
   }
 
   .user-profile {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 0.75rem;
+    flex-direction: row;
+    align-items: center;
+    padding: 0.5rem;
     gap: 0.5rem;
     margin-left: 0;
     width: 100%;
+    justify-content: space-between;
   }
 
   .user-email {
     font-size: 0.85rem;
     word-break: break-all;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
   }
 
   .logout-btn {
-    width: 100%;
-    text-align: center;
+    flex-shrink: 0;
+    min-width: 48px;
+    width: 48px;
+    padding: 0.6rem;
   }
 }
 

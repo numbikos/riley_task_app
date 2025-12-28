@@ -1101,8 +1101,10 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
                 className="logout-btn" 
                 onClick={handleLogout} 
                 title="Sign Out"
+                aria-label="Sign Out"
               >
-                Sign Out
+                <span className="logout-icon">🚪</span>
+                <span className="logout-text">Sign Out</span>
               </button>
             </div>
           </div>
