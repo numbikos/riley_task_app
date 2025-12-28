@@ -111,17 +111,41 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
             {!isCollapsed && (
               <div className="tag-group-tasks">
                 {/* Show recurring task groups */}
-                {Array.from(recurringTagGroups.values()).map(groupTasks => (
-                  <RecurringTaskGroup
-                    key={groupTasks[0].recurrenceGroupId}
-                    tasks={groupTasks}
-                    tagColors={tagColors}
-                    onToggleComplete={onToggleComplete}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onUpdateTask={onUpdateTask}
-                  />
-                ))}
+                {Array.from(recurringTagGroups.values()).map(groupTasks => {
+                  // Count incomplete tasks
+                  const incompleteTasks = groupTasks.filter(task => !task.completed);
+                  
+                  // If only 1 remaining, show as individual task card
+                  if (incompleteTasks.length === 1) {
+                    return (
+                      <TaskCard
+                        key={incompleteTasks[0].id}
+                        task={incompleteTasks[0]}
+                        tagColors={tagColors}
+                        onToggleComplete={onToggleComplete}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onUpdateTask={onUpdateTask}
+                        showDate={true}
+                        showTags={false}
+                      />
+                    );
+                  }
+                  
+                  // Otherwise show as grouped
+                  return (
+                    <RecurringTaskGroup
+                      key={groupTasks[0].recurrenceGroupId}
+                      tasks={groupTasks}
+                      tagColors={tagColors}
+                      onToggleComplete={onToggleComplete}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      onUpdateTask={onUpdateTask}
+                      hideActions={true}
+                    />
+                  );
+                })}
                 {/* Show non-recurring tasks */}
                 {nonRecurringTagTasks.map(task => (
                   <TaskCard

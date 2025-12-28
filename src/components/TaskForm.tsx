@@ -7,10 +7,11 @@ interface TaskFormProps {
   task: Task | null;
   onSave: (taskData: Partial<Task>) => void;
   onCancel: () => void;
+  onExtendRecurring?: () => void;
   initialDueDate?: string | null;
 }
 
-export default function TaskForm({ task, onSave, onCancel, initialDueDate }: TaskFormProps) {
+export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, initialDueDate }: TaskFormProps) {
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [completed, setCompleted] = useState(false);
@@ -571,6 +572,48 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
                 >
                   None
                 </button>
+                {task && task.recurrenceGroupId && onExtendRecurring && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (onExtendRecurring) {
+                        const confirmed = window.confirm(
+                          `Add 50 more occurrences to "${task.title}"?\n\nThis will add 50 new instances starting from the day after the last occurrence.`
+                        );
+                        if (confirmed) {
+                          onExtendRecurring();
+                          onCancel();
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      background: 'transparent',
+                      border: '1px solid rgba(64, 224, 208, 0.5)',
+                      borderRadius: '8px',
+                      color: '#40E0D0',
+                      fontSize: '0.9rem',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      fontFamily: 'inherit',
+                      marginLeft: '0.5rem'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(64, 224, 208, 0.2)';
+                      e.currentTarget.style.borderColor = '#40E0D0';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = 'rgba(64, 224, 208, 0.5)';
+                    }}
+                    title="Add 50 more occurrences to this recurring task"
+                  >
+                    +50
+                  </button>
+                )}
               </div>
               {recurrence === 'custom' && dueDate && (
                 <div className="custom-recurrence-options" style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>

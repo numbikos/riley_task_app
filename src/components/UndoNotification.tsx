@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 interface UndoNotificationProps {
   taskTitle: string;
@@ -7,20 +7,12 @@ interface UndoNotificationProps {
 }
 
 export default function UndoNotification({ taskTitle, onUndo, onDismiss }: UndoNotificationProps) {
-  const [timeLeft, setTimeLeft] = useState(5);
-
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          onDismiss();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const timer = setTimeout(() => {
+      onDismiss();
+    }, 3000); // Auto-dismiss after 3 seconds
 
-    return () => clearInterval(interval);
+    return () => clearTimeout(timer);
   }, [onDismiss]);
 
   return (
@@ -38,7 +30,6 @@ export default function UndoNotification({ taskTitle, onUndo, onDismiss }: UndoN
           </button>
         </div>
       </div>
-      <div className="undo-notification-timer" style={{ width: `${(timeLeft / 5) * 100}%` }} />
     </div>
   );
 }

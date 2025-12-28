@@ -4,6 +4,7 @@ import { loadTasks as loadTasksFromStorage, loadTagColors as loadTagColorsFromSt
 import { loadTasks, saveTasks, generateId, loadTagColors, saveTagColors, deleteTasks as deleteTasksFromDatabase } from './utils/supabaseStorage';
 import { supabase, isSupabaseConfigured } from './utils/supabase';
 import { isDateToday, isDateTomorrow, isDateOverdue, generateRecurringDates, formatDate } from './utils/dateUtils';
+import { startOfDay } from 'date-fns';
 import TodayView from './components/TodayView';
 import TomorrowView from './components/TomorrowView';
 import DayView from './components/DayView';
@@ -669,7 +670,7 @@ function App() {
           recurrenceMultiplier: taskData.recurrence === 'custom' ? multiplier : undefined,
           customFrequency: taskData.recurrence === 'custom' ? customFreq : undefined,
           isLastInstance,
-          autoRenew: taskData.autoRenew || false,
+          autoRenew: true, // Always enable auto-renewal for recurring tasks
         });
       });
     } else if (taskData.recurrence && !dueDate) {
@@ -752,7 +753,6 @@ function App() {
       const recurringDates = generateRecurringDates(dueDate!, updates.recurrence || existingTask.recurrence!, 50, multiplier, customFreq);
       
       const normalizedTags = normalizeTags(updates.tags || existingTask.tags);
-      const autoRenewValue = updates.autoRenew !== undefined ? updates.autoRenew : existingTask.autoRenew || false;
       const newTasks: Task[] = recurringDates.map((date, index) => {
         const isLastInstance = index === recurringDates.length - 1;
         return {
@@ -769,7 +769,7 @@ function App() {
           recurrenceMultiplier: updates.recurrence === 'custom' ? multiplier : undefined,
           customFrequency: updates.recurrence === 'custom' ? customFreq : undefined,
           isLastInstance,
-          autoRenew: autoRenewValue,
+          autoRenew: true, // Always enable auto-renewal for recurring tasks
         };
       });
       
@@ -807,7 +807,7 @@ function App() {
           recurrenceMultiplier: existingTask.recurrenceMultiplier,
           customFrequency: existingTask.customFrequency,
           isLastInstance,
-          autoRenew: existingTask.autoRenew || false,
+          autoRenew: true, // Always enable auto-renewal for recurring tasks
         };
       });
       
@@ -982,6 +982,82 @@ function App() {
       
       setDeletedTask(null);
     }
+  };
+
+  const extendRecurringTask = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || !task.recurrence || !task.dueDate || !task.recurrenceGroupId) return;
+
+    // Find the last instance in the recurrence group (by due date)
+    const groupTasks = tasks.filter(t => t.recurrenceGroupId === task.recurrenceGroupId);
+    if (groupTasks.length === 0) return;
+    
+    // Find the task with the latest due date (compare dates properly)
+    const lastInstance = groupTasks.reduce((latest, current) => {
+      if (!latest.dueDate) return current;
+      if (!current.dueDate) return latest;
+      // Parse dates as local dates and compare
+      const latestDate = startOfDay(new Date(latest.dueDate + 'T00:00:00'));
+      const currentDate = startOfDay(new Date(current.dueDate + 'T00:00:00'));
+      return currentDate > latestDate ? current : latest;
+    });
+
+    if (!lastInstance.dueDate) return;
+
+    // Calculate next start date (day after last instance's due date)
+    // Parse the date string properly to avoid timezone issues
+    const lastDateStr = lastInstance.dueDate;
+    const [year, month, day] = lastDateStr.split('-').map(Number);
+    const lastDate = new Date(year, month - 1, day);
+    lastDate.setDate(lastDate.getDate() + 1);
+    const nextStartDate = formatDate(lastDate);
+    
+    // Generate next 50 instances
+    const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier ?? 1) : 1;
+    const customFreq = task.recurrence === 'custom' ? task.customFrequency : undefined;
+    const recurringDates = generateRecurringDates(
+      nextStartDate,
+      task.recurrence,
+      50,
+      multiplier,
+      customFreq
+    );
+    
+    const normalizedTags = normalizeTags(task.tags);
+    const newRecurrenceGroupId = task.recurrenceGroupId; // Keep same group ID
+    const newTasks: Task[] = recurringDates.map((date, index) => {
+      const isLastInstance = index === recurringDates.length - 1;
+      return {
+        id: generateId(),
+        title: task.title,
+        dueDate: date,
+        completed: false,
+        subtasks: task.subtasks.map(st => ({ ...st, completed: false })),
+        tags: normalizedTags,
+        createdAt: task.createdAt,
+        lastModified: new Date().toISOString(),
+        recurrence: task.recurrence,
+        recurrenceGroupId: newRecurrenceGroupId,
+        recurrenceMultiplier: task.recurrenceMultiplier,
+        customFrequency: task.customFrequency,
+        isLastInstance,
+        autoRenew: true, // Always enable auto-renewal for recurring tasks
+      };
+    });
+    
+    // Update the previous last instance to not be last anymore
+    const updatedTasks = tasks.map(t => 
+      t.id === lastInstance.id ? { ...t, isLastInstance: false } : t
+    );
+    
+    // Add new tasks
+    setTasks([...updatedTasks, ...newTasks]);
+    
+    // Show notification
+    setAutoRenewNotification({ taskTitle: task.title, count: 50 });
+    setTimeout(() => {
+      setAutoRenewNotification(null);
+    }, 5000);
   };
 
   const toggleTaskComplete = (id: string) => {
@@ -1514,6 +1590,11 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
             setEditingTask(null);
             setInitialDueDate(null);
           }}
+          onExtendRecurring={editingTask?.recurrenceGroupId ? () => {
+            if (editingTask) {
+              extendRecurringTask(editingTask.id);
+            }
+          } : undefined}
           initialDueDate={initialDueDate}
         />
       )}
@@ -1552,53 +1633,18 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
       )}
 
       {autoRenewNotification && (
-        <div className="auto-renew-notification" style={{
-          position: 'fixed',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#1A1A1A',
-          border: '1px solid rgba(64, 224, 208, 0.3)',
-          borderRadius: '12px',
-          padding: '1rem 1.5rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
-          zIndex: 2000,
-          minWidth: '300px',
-          maxWidth: '400px',
-          borderLeft: '4px solid #40E0D0'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#40E0D0', fontWeight: 600, marginBottom: '0.25rem' }}>Auto-Renewal</div>
-              <div style={{ color: '#F8FAFC', fontSize: '0.9rem' }}>
+        <div className="auto-renew-notification">
+          <div className="notification-content">
+            <div className="notification-body">
+              <div className="notification-title">Auto-Renewal</div>
+              <div className="notification-message">
                 Created {autoRenewNotification.count} new instances of "{autoRenewNotification.taskTitle}"
               </div>
             </div>
             <button
+              className="notification-close-btn"
               onClick={() => setAutoRenewNotification(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#888',
-                cursor: 'pointer',
-                fontSize: '1.2rem',
-                padding: '0',
-                width: '24px',
-                height: '24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '4px',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                e.currentTarget.style.color = '#fff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'none';
-                e.currentTarget.style.color = '#888';
-              }}
+              aria-label="Close notification"
             >
               ×
             </button>
@@ -1627,53 +1673,18 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
       )}
 
       {migrationNotification && (
-        <div className="auto-renew-notification" style={{
-          position: 'fixed',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#1A1A1A',
-          border: '1px solid rgba(64, 224, 208, 0.3)',
-          borderRadius: '12px',
-          padding: '1rem 1.5rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
-          zIndex: 2000,
-          minWidth: '300px',
-          maxWidth: '400px',
-          borderLeft: '4px solid #40E0D0'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: '#40E0D0', fontWeight: 600, marginBottom: '0.25rem' }}>Migration</div>
-              <div style={{ color: '#F8FAFC', fontSize: '0.9rem' }}>
+        <div className="migration-notification">
+          <div className="notification-content">
+            <div className="notification-body">
+              <div className="notification-title">Migration</div>
+              <div className="notification-message">
                 {migrationNotification}
               </div>
             </div>
             <button
+              className="notification-close-btn"
               onClick={() => setMigrationNotification(null)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#888',
-                cursor: 'pointer',
-                fontSize: '1.2rem',
-                padding: '0',
-                width: '24px',
-                height: '24px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '4px',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                e.currentTarget.style.color = '#fff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'none';
-                e.currentTarget.style.color = '#888';
-              }}
+              aria-label="Close notification"
             >
               ×
             </button>

@@ -10,6 +10,7 @@ interface RecurringTaskGroupProps {
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
   onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  hideActions?: boolean; // If true, hide edit and delete buttons
 }
 
 export default function RecurringTaskGroup({ 
@@ -18,7 +19,8 @@ export default function RecurringTaskGroup({
   onToggleComplete, 
   onEdit, 
   onDelete, 
-  onUpdateTask 
+  onUpdateTask,
+  hideActions = false
 }: RecurringTaskGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -118,67 +120,71 @@ export default function RecurringTaskGroup({
               </span>
             )}
             <span>
-              {incompleteCount} of {totalCount} incomplete
+              {hideActions 
+                ? `${incompleteCount} remaining`
+                : `${incompleteCount} of ${totalCount} incomplete`}
             </span>
           </div>
         </div>
-        <div style={{ 
-          display: 'flex', 
-          gap: '0.5rem',
-          alignItems: 'center'
-        }}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(representativeTask);
-            }}
-            style={{
-              background: 'transparent',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '4px',
-              color: '#888',
-              padding: '0.25rem 0.5rem',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#40E0D0';
-              e.currentTarget.style.color = '#40E0D0';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-              e.currentTarget.style.color = '#888';
-            }}
-            title="Edit recurring series"
-          >
-            Edit
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(representativeTask.id);
-            }}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#888',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '0.25rem',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#FF6B6B';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#888';
-            }}
-            title="Delete recurring series"
-          >
-            🗑️
-          </button>
-        </div>
+        {!hideActions && (
+          <div style={{ 
+            display: 'flex', 
+            gap: '0.5rem',
+            alignItems: 'center'
+          }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(representativeTask);
+              }}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '4px',
+                color: '#888',
+                padding: '0.25rem 0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#40E0D0';
+                e.currentTarget.style.color = '#40E0D0';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.color = '#888';
+              }}
+              title="Edit recurring series"
+            >
+              Edit
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(representativeTask.id);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#888',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                padding: '0.25rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#FF6B6B';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#888';
+              }}
+              title="Delete recurring series"
+            >
+              🗑️
+            </button>
+          </div>
+        )}
       </div>
       {isExpanded && (
         <div style={{ 

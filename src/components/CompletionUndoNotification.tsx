@@ -10,7 +10,7 @@ export default function CompletionUndoNotification({ taskTitle, onUndo, onDismis
   useEffect(() => {
     const timer = setTimeout(() => {
       onDismiss();
-    }, 5000); // Auto-dismiss after 5 seconds
+    }, 3000); // Auto-dismiss after 3 seconds
 
     return () => clearTimeout(timer);
   }, [onDismiss]);
