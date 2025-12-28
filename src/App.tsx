@@ -35,6 +35,7 @@ function App() {
   const [migrationNotification, setMigrationNotification] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showTagManager, setShowTagManager] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false);
   const [isLoadingFromDatabase, setIsLoadingFromDatabase] = useState(false);
   const isSavingRef = useRef(false);
@@ -1088,8 +1089,16 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
              Poop Task
           </h1>
           <div className="app-header-actions">
-            <button className="tag-manager-btn" onClick={() => setShowTagManager(true)} title="Manage Tags">
+            <button className="tag-manager-btn desktop-tag-manager-btn" onClick={() => setShowTagManager(true)} title="Manage Tags">
               🏷️
+            </button>
+            <button 
+              className="mobile-menu-btn"
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              title="Menu"
+              aria-label="Menu"
+            >
+              <span className="hamburger-icon">☰</span>
             </button>
             <button className="add-task-btn" onClick={() => { setEditingTask(null); setInitialDueDate(null); setShowTaskForm(true); }}>
               <span className="add-task-icon">+</span>
@@ -1098,16 +1107,53 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
             <div className="user-profile">
               <span className="user-email">{user?.email}</span>
               <button 
-                className="logout-btn" 
+                className="logout-btn desktop-logout-btn" 
                 onClick={handleLogout} 
                 title="Sign Out"
                 aria-label="Sign Out"
               >
-                <span className="logout-icon">🚪</span>
-                <span className="logout-text">Sign Out</span>
+                Sign Out
               </button>
             </div>
           </div>
+          {showMobileMenu && (
+            <div className="mobile-menu-overlay" onClick={() => setShowMobileMenu(false)}>
+              <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
+                <div className="mobile-menu-header">
+                  <span className="mobile-menu-title">Menu</span>
+                  <button 
+                    className="mobile-menu-close"
+                    onClick={() => setShowMobileMenu(false)}
+                    aria-label="Close menu"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="mobile-menu-items">
+                  <button 
+                    className="mobile-menu-item"
+                    onClick={() => {
+                      setShowTagManager(true);
+                      setShowMobileMenu(false);
+                    }}
+                  >
+                    <span className="mobile-menu-item-icon">🏷️</span>
+                    <span className="mobile-menu-item-text">Manage Tags</span>
+                  </button>
+                  <button 
+                    className="mobile-menu-item mobile-menu-item-logout"
+                    onClick={() => {
+                      handleLogout();
+                      setShowMobileMenu(false);
+                    }}
+                  >
+                    <span className="mobile-menu-item-icon">🚪</span>
+                    <span className="mobile-menu-item-text">Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <nav className="view-nav">
           <button 
