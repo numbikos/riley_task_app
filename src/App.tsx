@@ -1082,7 +1082,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
               setSearchQuery('');
             }}
           >
-            Poop Task
+             Poop Task
           </h1>
           <div className="app-header-actions">
             <button className="tag-manager-btn" onClick={() => setShowTagManager(true)} title="Manage Tags">
