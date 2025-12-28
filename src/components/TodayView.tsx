@@ -32,27 +32,8 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
     return { overdueTasks: [], todayTasks: tasks };
   }, [tasks, isToday]);
 
-  if (tasks.length === 0) {
-    return (
-      <div>
-        <div className="empty-state">
-          <h2>No tasks for {isToday ? 'today' : fullDateDisplay.toLowerCase()}</h2>
-          {onAddTask ? (
-            <button
-              className="empty-state-add-task-btn"
-              onClick={() => onAddTask(date)}
-            >
-              Add task
-            </button>
-          ) : (
-            <p>Add a task and set its due date to {isToday ? 'today' : fullDateDisplay.toLowerCase()} to see it here.</p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const toggleTagCollapse = (tag: string) => {
+  // Move toggleTagCollapse to useCallback to ensure hooks are always called in same order
+  const toggleTagCollapse = useCallback((tag: string) => {
     setCollapsedTags(prev => {
       const newSet = new Set(prev);
       if (newSet.has(tag)) {
@@ -62,7 +43,7 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
       }
       return newSet;
     });
-  };
+  }, []);
 
   const renderGroupedTasks = useCallback((taskList: Task[], showDate: boolean = false) => {
     const { grouped, sortedTags } = groupTasksByTag(taskList);
@@ -111,6 +92,27 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
       );
     });
   }, [collapsedTags, tagColors, onToggleComplete, onEdit, onDelete, onUpdateTask]);
+
+  // Early return AFTER all hooks have been called
+  if (tasks.length === 0) {
+    return (
+      <div>
+        <div className="empty-state">
+          <h2>No tasks for {isToday ? 'today' : fullDateDisplay.toLowerCase()}</h2>
+          {onAddTask ? (
+            <button
+              className="empty-state-add-task-btn"
+              onClick={() => onAddTask(date)}
+            >
+              Add task
+            </button>
+          ) : (
+            <p>Add a task and set its due date to {isToday ? 'today' : fullDateDisplay.toLowerCase()} to see it here.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

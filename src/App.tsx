@@ -67,6 +67,7 @@ function App() {
     setCompletedTask,
     migrationNotification,
     setMigrationNotification,
+    trackRecentUpdate,
   } = useTaskManagement(user);
 
   // Recurring tasks
@@ -129,12 +130,23 @@ function App() {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
 
+    // Track this update to prevent race conditions with real-time reloads
+    trackRecentUpdate(id);
+    
+    // Also track any tasks that might be affected by recurring task updates
+    if (existingTask.recurrenceGroupId && (existingTask.recurrence || updates.recurrence)) {
+      // Track all tasks in the same recurrence group
+      tasks
+        .filter(t => t.recurrenceGroupId === existingTask.recurrenceGroupId)
+        .forEach(t => trackRecentUpdate(t.id));
+    }
+
     if (existingTask.recurrence || updates.recurrence) {
       updateRecurringTask(id, updates);
     } else {
       updateTaskBase(id, updates);
     }
-  }, [tasks, updateRecurringTask, updateTaskBase]);
+  }, [tasks, updateRecurringTask, updateTaskBase, trackRecentUpdate]);
 
   // Delete task handler
   const deleteTask = useCallback(async (id: string) => {
@@ -339,7 +351,8 @@ function App() {
           onEdit={handleEdit} 
           onDelete={deleteTask}
           onDeleteGroup={deleteGroup}
-          onUpdateTask={updateTask} 
+          onUpdateTask={updateTask}
+          onAddTask={handleAddTask}
         />;
       case 'completed':
         return <CompletedView 

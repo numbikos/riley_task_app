@@ -36,6 +36,7 @@ export const useTaskManagement = (user: User | null) => {
   const isSavingRef = useRef(false);
   const lastSavedTasksRef = useRef<string>('');
   const isLoadingUserDataRef = useRef(false);
+  const recentlyUpdatedTasksRef = useRef<Map<string, number>>(new Map()); // Track task IDs and timestamps
 
   // Load user data when authenticated
   const loadUserData = async (showNotification = false) => {
@@ -187,10 +188,49 @@ export const useTaskManagement = (user: User | null) => {
           const updatedTasks = await loadTasks();
           logger.debug(`[Real-time] Reloaded ${updatedTasks.length} tasks after change`);
           
-          // Update the last saved ref to prevent triggering save after reload
-          lastSavedTasksRef.current = JSON.stringify(updatedTasks);
-          
-          setTasks(updatedTasks);
+          // Merge reloaded tasks with local optimistic updates for recently changed tasks
+          // This prevents race conditions when completing tasks quickly
+          setTasks(currentTasks => {
+            try {
+              // Safety check: ensure currentTasks is an array
+              if (!Array.isArray(currentTasks)) {
+                logger.warn('[Real-time] currentTasks is not an array, using reloaded data');
+                lastSavedTasksRef.current = JSON.stringify(updatedTasks);
+                return updatedTasks;
+              }
+
+              const recentlyUpdatedIds = Array.from(recentlyUpdatedTasksRef.current.keys());
+              if (recentlyUpdatedIds.length === 0) {
+                // No recent updates, use reloaded data as-is
+                lastSavedTasksRef.current = JSON.stringify(updatedTasks);
+                return updatedTasks;
+              }
+              
+              // Merge: use reloaded data, but preserve local state for recently updated tasks
+              const mergedTasks = updatedTasks.map(reloadedTask => {
+                const localTask = currentTasks.find(t => t.id === reloadedTask.id);
+                if (localTask && recentlyUpdatedIds.includes(reloadedTask.id)) {
+                  // Preserve local state for recently updated tasks to prevent race conditions
+                  logger.debug(`[Real-time] Preserving local state for recently updated task: ${reloadedTask.id}`);
+                  return localTask;
+                }
+                return reloadedTask;
+              });
+              
+              // Add any local tasks that aren't in reloaded data (shouldn't happen, but safety check)
+              const reloadedIds = new Set(updatedTasks.map(t => t.id));
+              const missingLocalTasks = currentTasks.filter(t => !reloadedIds.has(t.id));
+              const finalTasks = [...mergedTasks, ...missingLocalTasks];
+              
+              lastSavedTasksRef.current = JSON.stringify(finalTasks);
+              return finalTasks;
+            } catch (error) {
+              logger.error('[Real-time] Error in merge logic, using reloaded data:', error);
+              // Fallback to reloaded data if merge fails
+              lastSavedTasksRef.current = JSON.stringify(updatedTasks);
+              return updatedTasks;
+            }
+          });
         } catch (error) {
           logger.error('[Real-time] Error reloading tasks:', error);
         } finally {
@@ -199,7 +239,7 @@ export const useTaskManagement = (user: User | null) => {
             setIsLoadingFromDatabase(false);
           }, 500);
         }
-      }, 500); // Wait 500ms before reloading
+      }, 1000); // Increased debounce to 1000ms to allow rapid completions to settle
     };
     
     const channel = supabase
@@ -361,6 +401,16 @@ export const useTaskManagement = (user: User | null) => {
       return;
     }
     
+    // Track this task as recently updated to prevent reload from overwriting it
+    recentlyUpdatedTasksRef.current.set(id, Date.now());
+    // Clean up old entries (older than 2 seconds)
+    const twoSecondsAgo = Date.now() - 2000;
+    for (const [taskId, timestamp] of recentlyUpdatedTasksRef.current.entries()) {
+      if (timestamp < twoSecondsAgo) {
+        recentlyUpdatedTasksRef.current.delete(taskId);
+      }
+    }
+    
     const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
     
     setTasks(tasks.map(task => {
@@ -452,6 +502,18 @@ export const useTaskManagement = (user: User | null) => {
     }
   };
 
+  // Expose function to track recent updates (for use by recurring tasks hook)
+  const trackRecentUpdate = (id: string) => {
+    recentlyUpdatedTasksRef.current.set(id, Date.now());
+    // Clean up old entries (older than 2 seconds)
+    const twoSecondsAgo = Date.now() - 2000;
+    for (const [taskId, timestamp] of recentlyUpdatedTasksRef.current.entries()) {
+      if (timestamp < twoSecondsAgo) {
+        recentlyUpdatedTasksRef.current.delete(taskId);
+      }
+    }
+  };
+
   return {
     tasks,
     setTasks,
@@ -467,6 +529,7 @@ export const useTaskManagement = (user: User | null) => {
     setCompletedTask,
     migrationNotification,
     setMigrationNotification,
+    trackRecentUpdate,
   };
 };
 

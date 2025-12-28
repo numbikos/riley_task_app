@@ -38,6 +38,19 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
   // Memoize grouped tasks
   const { grouped, sortedTags } = useMemo(() => groupTasksByTag(tasks), [tasks]);
 
+  const toggleTagCollapse = (tag: string) => {
+    setCollapsedTags(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(tag)) {
+        newSet.delete(tag);
+      } else {
+        newSet.add(tag);
+      }
+      return newSet;
+    });
+  };
+
+  // Early return AFTER all hooks have been called
   if (tasks.length === 0) {
     return (
       <div>
@@ -64,18 +77,6 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
       </div>
     );
   }
-
-  const toggleTagCollapse = (tag: string) => {
-    setCollapsedTags(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(tag)) {
-        newSet.delete(tag);
-      } else {
-        newSet.add(tag);
-      }
-      return newSet;
-    });
-  };
 
   return (
     <div>

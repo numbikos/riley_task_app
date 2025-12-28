@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createRecurringTaskInstances, findFirstInstance, findLastInstance, getTasksToRemoveForRegeneration, extendRecurringTaskInstances } from '../recurringTaskHelpers';
 import { Task } from '../../types';
 

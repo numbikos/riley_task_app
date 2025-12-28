@@ -12,19 +12,11 @@ interface AllTasksViewProps {
   onDelete: (id: string) => void;
   onDeleteGroup?: (groupId: string) => void;
   onUpdateTask?: (id: string, updates: TaskUpdate) => void;
+  onAddTask?: (date: Date) => void;
 }
 
-export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onDeleteGroup, onUpdateTask }: AllTasksViewProps) {
+export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onDeleteGroup, onUpdateTask, onAddTask }: AllTasksViewProps) {
   const [collapsedTags, setCollapsedTags] = useState<Set<string>>(new Set());
-
-  if (tasks.length === 0) {
-    return (
-      <div className="empty-state">
-        <h2>No outstanding tasks</h2>
-        <p>All your tasks are completed! Add a new task to get started.</p>
-      </div>
-    );
-  }
 
   const toggleTagCollapse = (tag: string) => {
     setCollapsedTags(prev => {
@@ -80,6 +72,24 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
 
     return { grouped, recurringByTag, sortedAllTags };
   }, [tasks]);
+
+  // Early return AFTER all hooks have been called
+  if (tasks.length === 0) {
+    return (
+      <div className="empty-state">
+        <h2>No outstanding tasks</h2>
+        <p>All your tasks are completed! Add a new task to get started.</p>
+        {onAddTask && (
+          <button
+            className="empty-state-add-task-btn"
+            onClick={() => onAddTask(new Date())}
+          >
+            Add task
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="task-list">
