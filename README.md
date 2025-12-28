@@ -185,3 +185,36 @@ npm run build
 ```
 
 The built files will be in the `dist` directory.
+
+## Deploying to GitHub Pages
+
+This app can be deployed to GitHub Pages using GitHub Actions. Follow these steps:
+
+### 1. Enable GitHub Pages
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Pages**
+3. Under **Source**, select **GitHub Actions**
+
+### 2. Add GitHub Secrets
+1. Go to **Settings** → **Secrets and variables** → **Actions**
+2. Click **New repository secret**
+3. Add these two secrets:
+   - Name: `VITE_SUPABASE_URL` → Value: Your Supabase project URL
+   - Name: `VITE_SUPABASE_ANON_KEY` → Value: Your Supabase anon key
+
+### 3. Push to Main Branch
+The GitHub Actions workflow will automatically:
+- Build your app with the environment variables
+- Deploy it to GitHub Pages
+- Your app will be available at: `https://yourusername.github.io/riley_task_app/`
+
+### Note on Base Path
+If your repository name is different from `riley_task_app`, update the `base` path in `vite.config.ts` to match your repository name.
+
+### Manual Deployment (Alternative)
+If you prefer to deploy manually:
+1. Build the app: `npm run build`
+2. Go to repository **Settings** → **Pages**
+3. Select **Deploy from a branch**
+4. Choose the `main` branch and `/dist` folder
+5. Note: You'll need to inject environment variables into the built files manually, or use a service like Netlify/Vercel that supports environment variables.
