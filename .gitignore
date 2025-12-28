@@ -52,3 +52,7 @@ Thumbs.db
 *.tmp
 *.temp
 .cache
+
+# Review and assessment documents
+COMPREHENSIVE_CODE_REVIEW.md
+SECURITY_REPORT.md
