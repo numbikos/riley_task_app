@@ -729,14 +729,28 @@ function App() {
       // Delete old recurring group if it exists
       let tasksToRemove: Task[] = [];
       if (existingTask.recurrenceGroupId) {
-        // Find all future instances (due date >= today OR incomplete and overdue)
+        // When recurrence frequency changes, delete ALL instances from the old pattern
+        // except completed past instances (keep those as historical records)
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         tasksToRemove = tasks.filter(task => {
+          // Only consider tasks from the same recurrence group
           if (task.recurrenceGroupId !== existingTask.recurrenceGroupId) return false;
-          const taskDate = new Date(task.dueDate!);
+          
+          // Must have a due date to compare
+          if (!task.dueDate) return false;
+          
+          const taskDate = new Date(task.dueDate);
           taskDate.setHours(0, 0, 0, 0);
-          return taskDate >= today || (!task.completed && taskDate < today);
+          
+          // Delete all future instances (including today, regardless of completion)
+          if (taskDate >= today) return true;
+          
+          // Delete incomplete overdue instances
+          if (!task.completed && taskDate < today) return true;
+          
+          // Keep completed past instances
+          return false;
         });
       } else {
         tasksToRemove = [existingTask];
@@ -929,6 +943,24 @@ function App() {
     await performDelete([taskToDelete], taskToDelete);
   };
 
+  const deleteGroup = async (groupId: string) => {
+    // Get all tasks in this recurrence group
+    const groupTasks = tasks.filter(task => task.recurrenceGroupId === groupId);
+    if (groupTasks.length === 0) return;
+
+    const incompleteTasks = groupTasks.filter(task => !task.completed);
+    if (incompleteTasks.length === 0) return;
+
+    const representativeTask = groupTasks[0];
+    const confirmed = window.confirm(
+      `Delete all incomplete tasks in "${representativeTask.title}"? This will delete ${incompleteTasks.length} task${incompleteTasks.length !== 1 ? 's' : ''}.`
+    );
+    
+    if (confirmed) {
+      await performDelete(incompleteTasks, representativeTask);
+    }
+  };
+
   const deleteFutureOccurrences = async () => {
     if (!pendingDeleteTask || !pendingDeleteTask.dueDate) return;
 
@@ -938,6 +970,8 @@ function App() {
     const tasksToDelete = tasks.filter(task => {
       if (task.recurrenceGroupId !== pendingDeleteTask.recurrenceGroupId) return false;
       if (!task.dueDate) return false;
+      // Never delete completed tasks - they are historical records
+      if (task.completed) return false;
       
       // Extract date part from task.dueDate (handles both 'yyyy-MM-dd' and ISO strings)
       const taskDateStr = task.dueDate.split('T')[0];
@@ -1335,7 +1369,8 @@ function App() {
           tagColors={tagColors}
           onToggleComplete={toggleTaskComplete} 
           onEdit={handleEdit} 
-          onDelete={deleteTask} 
+          onDelete={deleteTask}
+          onDeleteGroup={deleteGroup}
           onUpdateTask={updateTask} 
         />;
       case 'completed':
@@ -1481,7 +1516,6 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
                       setShowMobileMenu(false);
                     }}
                   >
-                    <span className="mobile-menu-item-icon">🏷️</span>
                     <span className="mobile-menu-item-text">Manage Tags</span>
                   </button>
                   <button 
@@ -1491,7 +1525,6 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
                       setShowMobileMenu(false);
                     }}
                   >
-                    <span className="mobile-menu-item-icon">🚪</span>
                     <span className="mobile-menu-item-text">Sign Out</span>
                   </button>
                   <div className="mobile-menu-version">

@@ -8,7 +8,8 @@ interface RecurringTaskGroupProps {
   tagColors: Record<string, string>;
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void; // For individual task deletion (shows dialog)
+  onDeleteGroup?: (groupId: string) => void; // For group header deletion (deletes all incomplete)
   onUpdateTask?: (id: string, updates: Partial<Task>) => void;
   hideActions?: boolean; // If true, hide edit and delete buttons
 }
@@ -19,18 +20,13 @@ export default function RecurringTaskGroup({
   onToggleComplete, 
   onEdit, 
   onDelete, 
+  onDeleteGroup,
   onUpdateTask,
   hideActions = false
 }: RecurringTaskGroupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (tasks.length === 0) return null;
-
-  // Get the first task as representative (they all have the same title, tags, etc.)
-  const representativeTask = tasks[0];
-  const tagColor = representativeTask.tags.length > 0 
-    ? getTagColor(representativeTask.tags[0], tagColors)
-    : getTagColor('default', tagColors);
 
   // Sort tasks by due date (earliest first)
   const sortedTasks = [...tasks].sort((a, b) => {
@@ -39,9 +35,16 @@ export default function RecurringTaskGroup({
     return a.dueDate.localeCompare(b.dueDate);
   });
 
-  // Get next incomplete task
+  // Get next incomplete task (earliest incomplete task)
   const nextIncompleteTask = sortedTasks.find(task => !task.completed);
   const nextDueDate = nextIncompleteTask?.dueDate || sortedTasks[0]?.dueDate;
+
+  // Use the earliest incomplete task as representative for deletion, or earliest task if all are complete
+  // This ensures "Delete All Future Occurrences" uses the earliest date in the group
+  const representativeTask = nextIncompleteTask || sortedTasks[0] || tasks[0];
+  const tagColor = representativeTask.tags.length > 0 
+    ? getTagColor(representativeTask.tags[0], tagColors)
+    : getTagColor('default', tagColors);
 
   // Count incomplete tasks
   const incompleteCount = tasks.filter(task => !task.completed).length;
@@ -126,12 +129,12 @@ export default function RecurringTaskGroup({
             </span>
           </div>
         </div>
-        {!hideActions && (
-          <div style={{ 
-            display: 'flex', 
-            gap: '0.5rem',
-            alignItems: 'center'
-          }}>
+        <div style={{ 
+          display: 'flex', 
+          gap: '0.5rem',
+          alignItems: 'center'
+        }}>
+          {!hideActions && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -159,32 +162,38 @@ export default function RecurringTaskGroup({
             >
               Edit
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              // If onDeleteGroup is provided, use it (for group header deletion)
+              // Otherwise, fall back to onDelete (for individual task deletion)
+              if (onDeleteGroup && representativeTask.recurrenceGroupId) {
+                onDeleteGroup(representativeTask.recurrenceGroupId);
+              } else {
                 onDelete(representativeTask.id);
-              }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#888',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                padding: '0.25rem',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = '#FF6B6B';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = '#888';
-              }}
-              title="Delete recurring series"
-            >
-              🗑️
-            </button>
-          </div>
-        )}
+              }
+            }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#888',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              padding: '0.25rem',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = '#FF6B6B';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = '#888';
+            }}
+            title={onDeleteGroup ? "Delete all incomplete tasks in this group" : "Delete recurring series"}
+          >
+            🗑️
+          </button>
+        </div>
       </div>
       {isExpanded && (
         <div style={{ 

@@ -83,8 +83,8 @@ export default function DeleteRecurringDialog({
             <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Delete All Future Occurrences</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
               {taskDueDate 
-                ? `Deletes all tasks from ${getDateDisplay(taskDueDate)} onwards. Past tasks remain.`
-                : 'Deletes all tasks from the selected task\'s due date onwards. Past tasks remain.'}
+                ? `Deletes all incomplete tasks from ${getDateDisplay(taskDueDate)} onwards. Completed and past tasks remain.`
+                : 'Deletes all incomplete tasks from the selected task\'s due date onwards. Completed and past tasks remain.'}
             </div>
           </button>
 

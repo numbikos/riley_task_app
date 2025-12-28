@@ -10,10 +10,11 @@ interface AllTasksViewProps {
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
+  onDeleteGroup?: (groupId: string) => void;
   onUpdateTask?: (id: string, updates: Partial<Task>) => void;
 }
 
-export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onUpdateTask }: AllTasksViewProps) {
+export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onDeleteGroup, onUpdateTask }: AllTasksViewProps) {
   const [collapsedTags, setCollapsedTags] = useState<Set<string>>(new Set());
 
   if (tasks.length === 0) {
@@ -141,6 +142,7 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
                       onToggleComplete={onToggleComplete}
                       onEdit={onEdit}
                       onDelete={onDelete}
+                      onDeleteGroup={onDeleteGroup}
                       onUpdateTask={onUpdateTask}
                       hideActions={true}
                     />
