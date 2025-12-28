@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Task, getTagColor } from '../types';
 import TaskCard from './TaskCard';
+import RecurringTaskGroup from './RecurringTaskGroup';
 import { groupTasksByTag } from '../utils/taskUtils';
 
 interface AllTasksViewProps {
@@ -36,17 +37,61 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
     });
   };
 
-  const { grouped, sortedTags } = groupTasksByTag(tasks);
+  // Separate recurring and non-recurring tasks
+  const recurringTasks: Task[] = [];
+  const nonRecurringTasks: Task[] = [];
+  const recurringGroups: Map<string, Task[]> = new Map();
+
+  tasks.forEach(task => {
+    if (task.recurrenceGroupId) {
+      if (!recurringGroups.has(task.recurrenceGroupId)) {
+        recurringGroups.set(task.recurrenceGroupId, []);
+      }
+      recurringGroups.get(task.recurrenceGroupId)!.push(task);
+      recurringTasks.push(task);
+    } else {
+      nonRecurringTasks.push(task);
+    }
+  });
+
+  // Group non-recurring tasks by tag
+  const { grouped, sortedTags } = groupTasksByTag(nonRecurringTasks);
+  
+  // Group recurring tasks by tag (using the first task in each group as representative)
+  const recurringByTag: { [key: string]: Map<string, Task[]> } = {};
+  recurringGroups.forEach((groupTasks, groupId) => {
+    const representativeTask = groupTasks[0];
+    const tag = representativeTask.tags.length > 0 ? representativeTask.tags[0].toLowerCase() : 'untagged';
+    if (!recurringByTag[tag]) {
+      recurringByTag[tag] = new Map();
+    }
+    recurringByTag[tag].set(groupId, groupTasks);
+  });
+
+  // Get all tags that have either recurring or non-recurring tasks
+  const allTags = new Set([...sortedTags, ...Object.keys(recurringByTag)]);
+  const sortedAllTags = Array.from(allTags).sort((a, b) => {
+    if (a === 'untagged') return 1;
+    if (b === 'untagged') return -1;
+    return a.localeCompare(b);
+  });
 
   return (
     <div className="task-list">
-      {sortedTags.map(tag => {
-        const tagTasks = grouped[tag];
+      {sortedAllTags.map(tag => {
         const tagColor = tag === 'untagged' 
           ? getTagColor('default', tagColors)
           : getTagColor(tag, tagColors);
         const tagDisplay = tag === 'untagged' ? 'Untagged' : tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
         const isCollapsed = collapsedTags.has(tag);
+
+        const nonRecurringTagTasks = grouped[tag] || [];
+        const recurringTagGroups = recurringByTag[tag] || new Map();
+        const hasTasks = nonRecurringTagTasks.length > 0 || recurringTagGroups.size > 0;
+
+        if (!hasTasks) return null;
+
+        const totalCount = nonRecurringTagTasks.length + recurringTagGroups.size;
 
         return (
           <div key={tag} className="tag-group">
@@ -61,11 +106,24 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
               <span className="tag-group-name" style={{ color: tagColor }}>
                 {tagDisplay}
               </span>
-              <span className="tag-group-count" style={{ color: tagColor }}>{tagTasks.length}</span>
+              <span className="tag-group-count" style={{ color: tagColor }}>{totalCount}</span>
             </div>
             {!isCollapsed && (
               <div className="tag-group-tasks">
-                {tagTasks.map(task => (
+                {/* Show recurring task groups */}
+                {Array.from(recurringTagGroups.values()).map(groupTasks => (
+                  <RecurringTaskGroup
+                    key={groupTasks[0].recurrenceGroupId}
+                    tasks={groupTasks}
+                    tagColors={tagColors}
+                    onToggleComplete={onToggleComplete}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onUpdateTask={onUpdateTask}
+                  />
+                ))}
+                {/* Show non-recurring tasks */}
+                {nonRecurringTagTasks.map(task => (
                   <TaskCard
                     key={task.id}
                     task={task}

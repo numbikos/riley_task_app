@@ -58,7 +58,7 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
     });
   };
 
-  const renderGroupedTasks = (taskList: Task[]) => {
+  const renderGroupedTasks = (taskList: Task[], showDate: boolean = false) => {
     const { grouped, sortedTags } = groupTasksByTag(taskList);
     
     return sortedTags.map(tag => {
@@ -96,6 +96,7 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
                   onDelete={onDelete}
                   onUpdateTask={onUpdateTask}
                   showTags={false}
+                  showDate={showDate}
                 />
               ))}
             </div>
@@ -120,7 +121,7 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
                 Overdue
               </h3>
             </div>
-            {renderGroupedTasks(overdueTasks)}
+            {renderGroupedTasks(overdueTasks, true)}
           </>
         )}
       </div>

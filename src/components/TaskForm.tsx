@@ -23,16 +23,84 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
   const [editingSubtaskText, setEditingSubtaskText] = useState('');
   const [recurrence, setRecurrence] = useState<RecurrenceType>(null);
   const [recurrenceMultiplier, setRecurrenceMultiplier] = useState<number>(1);
+  const [recurrenceMultiplierInput, setRecurrenceMultiplierInput] = useState<string>('1');
+  const [recurrenceMultiplierError, setRecurrenceMultiplierError] = useState<string>('');
   const [customFrequency, setCustomFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('weekly');
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [isDateInputFocused, setIsDateInputFocused] = useState(false);
+  const [isLoadingTags, setIsLoadingTags] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    // Detect actual mobile device (not just narrow desktop windows)
+    // Check for touch capability AND narrow width to distinguish mobile from desktop
+    const checkMobile = () => {
+      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isNarrow = window.innerWidth <= 768;
+      // Only consider it mobile if it has touch capability AND is narrow
+      // This prevents narrow desktop windows from triggering mobile behavior
+      setIsMobile(hasTouch && isNarrow);
+    };
+    
+    // Check on mount
+    checkMobile();
+    
+    // Listen for resize events
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
 
   useEffect(() => {
     // Load available tags - they're stored lowercase, display with proper case
-    loadTags().then(setAvailableTags);
-    // Load tag colors
-    loadTagColors().then(setTagColors);
+    const loadTagsData = async () => {
+      setIsLoadingTags(true);
+      try {
+        const tags = await loadTags();
+        setAvailableTags(tags);
+        console.log('[TaskForm] Loaded tags:', tags);
+      } catch (error) {
+        console.error('[TaskForm] Failed to load tags:', error);
+        setAvailableTags([]);
+      } finally {
+        setIsLoadingTags(false);
+      }
+    };
+    
+    const loadColorsData = async () => {
+      try {
+        const colors = await loadTagColors();
+        setTagColors(colors);
+      } catch (error) {
+        console.error('[TaskForm] Failed to load tag colors:', error);
+        setTagColors({});
+      }
+    };
+    
+    loadTagsData();
+    loadColorsData();
   }, []);
+
+  // Reload tags when form opens (in case new tags were added)
+  useEffect(() => {
+    // Reload tags whenever the form is shown (when task changes or form opens)
+    const reloadTags = async () => {
+      setIsLoadingTags(true);
+      try {
+        const tags = await loadTags();
+        setAvailableTags(tags);
+        console.log('[TaskForm] Reloaded tags:', tags);
+      } catch (error) {
+        console.error('[TaskForm] Failed to reload tags:', error);
+      } finally {
+        setIsLoadingTags(false);
+      }
+    };
+    
+    reloadTags();
+  }, [task]); // Reload when task prop changes (form opens/closes)
 
   useEffect(() => {
     if (task) {
@@ -42,7 +110,9 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
       setTags([...task.tags]);
       setSubtasks([...task.subtasks]);
       setRecurrence(task.recurrence || null);
-      setRecurrenceMultiplier(task.recurrenceMultiplier || 1);
+      const multiplier = task.recurrenceMultiplier ?? 1;
+      setRecurrenceMultiplier(multiplier);
+      setRecurrenceMultiplierInput(multiplier.toString());
       setCustomFrequency(task.customFrequency || 'weekly');
     } else {
       // Reset form when creating new task
@@ -55,6 +125,8 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
       setSubtaskInput('');
       setRecurrence(null);
       setRecurrenceMultiplier(1);
+      setRecurrenceMultiplierInput('1');
+      setRecurrenceMultiplierError('');
       setCustomFrequency('weekly');
     }
     // Reset editing state when task changes
@@ -220,6 +292,24 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
       }
     }
 
+    // Validate recurrence multiplier before submission
+    if (recurrence === 'custom') {
+      const inputValue = parseInt(recurrenceMultiplierInput, 10);
+      if (isNaN(inputValue) || inputValue < 1) {
+        setRecurrenceMultiplierError('Please enter a number between 1 and 50');
+        return; // Prevent submission
+      } else if (inputValue > 50) {
+        setRecurrenceMultiplierError('Please enter a number between 1 and 50');
+        return; // Prevent submission
+      } else {
+        setRecurrenceMultiplierError(''); // Clear any previous error
+        setRecurrenceMultiplier(inputValue);
+        setRecurrenceMultiplierInput(inputValue.toString());
+      }
+    } else {
+      setRecurrenceMultiplierError(''); // Clear error if not using custom recurrence
+    }
+
     const taskData: Partial<Task> = {
       title: title.trim(),
       dueDate: dueDate || null,
@@ -296,26 +386,59 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
     if (e.target === e.currentTarget) {
       e.preventDefault();
       e.stopPropagation();
-      onCancel();
+      // Add small delay on mobile to prevent click-through
+      if (e.type === 'touchstart' || e.type === 'touchend') {
+        setTimeout(() => {
+          onCancel();
+        }, 150);
+      } else {
+        onCancel();
+      }
     }
   };
 
   const handleCancelClick = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onCancel();
+    // Add small delay on mobile to prevent click-through to background
+    if (e.type === 'touchstart' || e.type === 'touchend') {
+      setTimeout(() => {
+        onCancel();
+      }, 150);
+    } else {
+      onCancel();
+    }
   };
 
   return (
     <div 
       className="modal-overlay" 
       onClick={handleOverlayClick}
-      onTouchStart={handleOverlayClick}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+        handleOverlayClick(e);
+      }}
+      onTouchEnd={(e) => {
+        // Prevent touch end from propagating
+        if (e.target === e.currentTarget) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }}
     >
-      {isDateInputFocused && (
+      {isDateInputFocused && isMobile && (
         <div className="date-picker-backdrop" />
       )}
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()} 
+        onTouchStart={(e) => {
+          e.stopPropagation();
+        }}
+        onTouchEnd={(e) => {
+          e.stopPropagation();
+        }}
+      >
         <div className="modal-header">
           <div className="modal-header-left">
             <input
@@ -337,7 +460,21 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
               minLength={1}
             />
           </div>
-          <button className="modal-close" onClick={handleCancelClick} onTouchStart={handleCancelClick}>×</button>
+          <button 
+            className="modal-close" 
+            onClick={handleCancelClick} 
+            onTouchStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCancelClick(e);
+            }}
+            onTouchEnd={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            ×
+          </button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -348,8 +485,17 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
               type="date"
               value={dueDate}
               required
-              onFocus={() => setIsDateInputFocused(true)}
+              onFocus={(e) => {
+                setIsDateInputFocused(true);
+                // On desktop, ensure the input can receive text input
+                // Some browsers need explicit focus handling for date inputs
+                e.target.focus();
+              }}
               onBlur={() => setIsDateInputFocused(false)}
+              onClick={(e) => {
+                // Ensure clicking anywhere in the input (including placeholder area) focuses it
+                e.currentTarget.focus();
+              }}
               onChange={(e) => {
                 setDueDate(e.target.value);
                 // Clear recurrence if due date is removed
@@ -435,20 +581,27 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
                         type="number"
                         min="1"
                         max="50"
-                        value={recurrenceMultiplier}
+                        value={recurrenceMultiplierInput}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          if (val >= 1 && val <= 50) {
-                            setRecurrenceMultiplier(val);
-                          } else if (e.target.value === '') {
-                            setRecurrenceMultiplier(1);
+                          const inputValue = e.target.value;
+                          // Allow empty input and partial numbers while typing
+                          setRecurrenceMultiplierInput(inputValue);
+                          // Clear error when user starts typing
+                          if (recurrenceMultiplierError) {
+                            setRecurrenceMultiplierError('');
+                          }
+                          
+                          // Only update the numeric value if it's a valid number
+                          const numValue = parseInt(inputValue, 10);
+                          if (!isNaN(numValue) && numValue >= 1 && numValue <= 50) {
+                            setRecurrenceMultiplier(numValue);
                           }
                         }}
                         style={{
                           width: '80px',
                           padding: '0.75rem',
                           background: 'rgba(255, 255, 255, 0.1)',
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          border: `1px solid ${recurrenceMultiplierError ? '#FF6B6B' : 'rgba(255, 255, 255, 0.2)'}`,
                           borderRadius: '8px',
                           color: '#fff',
                           fontSize: '0.9rem',
@@ -462,13 +615,30 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
                           e.target.style.boxShadow = '0 0 0 3px rgba(64, 224, 208, 0.2)';
                         }}
                         onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                          e.target.style.boxShadow = 'none';
-                          if (!recurrenceMultiplier || recurrenceMultiplier < 1) {
-                            setRecurrenceMultiplier(1);
+                          // Validate on blur - show error but don't auto-fix
+                          const numValue = parseInt(e.target.value, 10);
+                          if (isNaN(numValue) || numValue < 1) {
+                            setRecurrenceMultiplierError('Please enter a number between 1 and 50');
+                            e.target.style.borderColor = '#FF6B6B';
+                            e.target.style.boxShadow = 'none';
+                          } else if (numValue > 50) {
+                            setRecurrenceMultiplierError('Please enter a number between 1 and 50');
+                            e.target.style.borderColor = '#FF6B6B';
+                            e.target.style.boxShadow = 'none';
+                          } else {
+                            setRecurrenceMultiplierError('');
+                            setRecurrenceMultiplier(numValue);
+                            setRecurrenceMultiplierInput(numValue.toString());
+                            e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                            e.target.style.boxShadow = 'none';
                           }
                         }}
                       />
+                      {recurrenceMultiplierError && (
+                        <div style={{ fontSize: '0.75rem', color: '#FF6B6B', marginTop: '0.25rem' }}>
+                          {recurrenceMultiplierError}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: '1 1 auto' }}>
                       <label style={{ fontSize: '0.85rem', color: '#B0B0B0', fontWeight: 500 }}>Frequency</label>
@@ -540,7 +710,11 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
                 placeholder="Add tag..."
               />
             </div>
-            {availableTags.length > 0 && (
+            {isLoadingTags ? (
+              <div className="tag-suggestions" style={{ padding: '0.75rem', color: '#888', fontSize: '0.85rem' }}>
+                Loading tags...
+              </div>
+            ) : availableTags.length > 0 ? (
               <div className="tag-suggestions">
                 <div className="tag-suggestions-label">Available tags:</div>
                 <div className="tag-suggestions-list">
@@ -591,6 +765,10 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
                     </button>
                   )}
                 </div>
+              </div>
+            ) : (
+              <div className="tag-suggestions" style={{ padding: '0.75rem', color: '#888', fontSize: '0.85rem' }}>
+                No tags available. Type a tag name and press Enter to create one.
               </div>
             )}
           </div>
@@ -674,7 +852,15 @@ export default function TaskForm({ task, onSave, onCancel, initialDueDate }: Tas
               type="button" 
               className="btn btn-secondary" 
               onClick={handleCancelClick}
-              onTouchStart={handleCancelClick}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCancelClick(e);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               Cancel

@@ -14,6 +14,7 @@ import TaskForm from './components/TaskForm';
 import TagManager from './components/TagManager';
 import UndoNotification from './components/UndoNotification';
 import CompletionUndoNotification from './components/CompletionUndoNotification';
+import DeleteRecurringDialog from './components/DeleteRecurringDialog';
 import Auth from './components/Auth';
 import './App.css';
 
@@ -33,6 +34,7 @@ function App() {
   const [completedTask, setCompletedTask] = useState<{ task: Task; previousState: Task } | null>(null);
   const [autoRenewNotification, setAutoRenewNotification] = useState<{ taskTitle: string; count: number } | null>(null);
   const [migrationNotification, setMigrationNotification] = useState<string | null>(null);
+  const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showTagManager, setShowTagManager] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -40,6 +42,7 @@ function App() {
   const [isLoadingFromDatabase, setIsLoadingFromDatabase] = useState(false);
   const isSavingRef = useRef(false);
   const lastSavedTasksRef = useRef<string>('');
+  const isLoadingUserDataRef = useRef(false);
   const [selectedDayDate, setSelectedDayDate] = useState<Date | null>(() => {
     if (savedViewState?.selectedDayDate) {
       const date = new Date(savedViewState.selectedDayDate);
@@ -80,25 +83,126 @@ function App() {
 
   // Check authentication state on mount
   useEffect(() => {
+    let timeoutId: number | null = null;
+    let safetyTimeoutId: number | null = null;
+    let isMounted = true;
+    
+    // Safety net: Always set loading to false after 5 seconds maximum, no matter what
+    safetyTimeoutId = window.setTimeout(() => {
+      console.error('[App] SAFETY NET: Forcing loading to false after 5 seconds');
+      if (isMounted) {
+        setLoading(false);
+      }
+    }, 5000);
+    
     const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      setLoading(false);
+      // If Supabase is not configured, skip auth check
+      if (!isSupabaseConfigured()) {
+        console.warn('[App] Supabase not configured - skipping auth check');
+        if (safetyTimeoutId) {
+          clearTimeout(safetyTimeoutId);
+          safetyTimeoutId = null;
+        }
+        if (isMounted) {
+          setLoading(false);
+          setUser(null);
+        }
+        return;
+      }
+
+      try {
+        // Set a very aggressive timeout to prevent infinite loading
+        timeoutId = window.setTimeout(() => {
+          console.warn('[App] Auth check timeout after 3 seconds - forcing loading to false');
+          if (isMounted) {
+            setLoading(false);
+            setUser(null);
+          }
+        }, 3000); // 3 second timeout - very aggressive
+
+        // Use Promise.race to ensure we don't hang forever
+        const authPromise = supabase.auth.getUser();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Auth check timeout')), 3000);
+        });
+
+        const { data: { user }, error } = await Promise.race([
+          authPromise,
+          timeoutPromise
+        ]).catch((err) => {
+          console.error('[App] Auth check failed:', err);
+          return { data: { user: null }, error: err };
+        }) as { data: { user: any }, error: any };
+        
+        // Clear timeouts if we got a response
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (safetyTimeoutId) {
+          clearTimeout(safetyTimeoutId);
+          safetyTimeoutId = null;
+        }
+        
+        if (!isMounted) return;
+        
+        if (error) {
+          console.error('[App] Error checking user:', error);
+          // Still set loading to false so user can see auth screen
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        
+        setUser(user);
+        setLoading(false);
+      } catch (error) {
+        console.error('[App] Exception checking user:', error);
+        // Clear timeouts on error
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        if (safetyTimeoutId) {
+          clearTimeout(safetyTimeoutId);
+          safetyTimeoutId = null;
+        }
+        // Always set loading to false, even on error
+        if (isMounted) {
+          setUser(null);
+          setLoading(false);
+        }
+      }
     };
 
     checkUser();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return;
       setUser(session?.user ?? null);
       if (session?.user) {
-        await loadUserData();
+        // Don't load here - let the useEffect handle it with proper delay and view reset
+        // This prevents duplicate calls and ensures proper initialization
       } else {
         setTasks([]);
+        // Reset view when logging out
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        setTodayViewDate(today);
+        setCurrentView('today');
+        setSearchQuery('');
       }
     });
 
     return () => {
+      isMounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (safetyTimeoutId) {
+        clearTimeout(safetyTimeoutId);
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -118,10 +222,37 @@ function App() {
 
   // Load user data when authenticated
   const loadUserData = async (showNotification = false) => {
+    // Prevent multiple simultaneous calls
+    if (isLoadingUserDataRef.current) {
+      console.log('[loadUserData] Already loading, skipping duplicate call');
+      return;
+    }
+    
+    let timeoutId: number | null = null;
+    isLoadingUserDataRef.current = true;
+    
     try {
       setIsLoadingFromDatabase(true); // Prevent save effect from running
       console.log('[loadUserData] Loading tasks from Supabase...');
-      const loadedTasks = await loadTasks();
+      
+      // Set a timeout to prevent infinite loading (increased to 30 seconds for slow networks)
+      const loadTasksWithTimeout = Promise.race<Task[]>([
+        loadTasks(),
+        new Promise<Task[]>((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            reject(new Error('Loading tasks timed out after 30 seconds'));
+          }, 30000); // Increased from 15 to 30 seconds
+        })
+      ]);
+      
+      const loadedTasks = await loadTasksWithTimeout;
+      
+      // Clear timeout if we got a response
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
       console.log(`[loadUserData] Loaded ${loadedTasks.length} tasks from Supabase`);
       if (loadedTasks.length === 0) {
         // Check if there's localStorage data to migrate
@@ -149,13 +280,38 @@ function App() {
       setHasLoadedTasks(true);
     } catch (error) {
       console.error('[loadUserData] Failed to load tasks:', error);
-      // Show error to user
-      setMigrationNotification(`Failed to load tasks: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setTimeout(() => {
-        setMigrationNotification(null);
-      }, 5000);
+      // Clear timeout on error
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      
+      // Only show error if it's a real error, not just a timeout that might recover
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isTimeoutError = errorMessage.includes('timed out');
+      
+      // For timeout errors, don't show notification - just log it
+      // The app will continue to function and may retry
+      if (!isTimeoutError) {
+        setMigrationNotification(`Failed to load tasks: ${errorMessage}. Try refreshing the page.`);
+        setTimeout(() => {
+          setMigrationNotification(null);
+        }, 5000);
+      } else {
+        console.warn('[loadUserData] Timeout occurred, but continuing without error notification');
+      }
+      
+      // Still mark as loaded to prevent infinite retries
+      setHasLoadedTasks(true);
+      // Set empty tasks so app can still function
+      setTasks([]);
+      lastSavedTasksRef.current = JSON.stringify([]);
     } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       setIsLoadingFromDatabase(false); // Re-enable save effect
+      isLoadingUserDataRef.current = false; // Allow future calls
     }
   };
 
@@ -206,11 +362,49 @@ function App() {
   }, [user, loading]);
 
   // Load tasks when user is authenticated
+  // Also reset view to 'today' when user logs in
   useEffect(() => {
     if (user && !loading) {
-      loadUserData();
+      // Reset to today view when user logs in (don't restore previous view state)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      setTodayViewDate(today);
+      setCurrentView('today');
+      setSearchQuery('');
+      
+      // Scroll to top when logging in
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      
+      // Add a small delay to ensure auth session is fully established before loading
+      // This prevents race conditions and ensures Supabase RLS policies work correctly
+      const loadTimer = setTimeout(() => {
+        loadUserData();
+      }, 300); // 300ms delay to ensure session is ready
+      
+      return () => {
+        clearTimeout(loadTimer);
+      };
+    } else if (!user) {
+      // Reset view state when user logs out
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      setTodayViewDate(today);
+      setCurrentView('today');
+      setSearchQuery('');
+      // Scroll to top when logging out
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [user, loading]);
+
+  // Scroll to top when switching to 'today' view
+  useEffect(() => {
+    if (currentView === 'today') {
+      // Small delay to ensure view has rendered
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100);
+    }
+  }, [currentView]);
 
   // Save tasks to Supabase whenever they change
   // BUT: Only save if:
@@ -357,29 +551,73 @@ function App() {
   useEffect(() => {
     if (!user) return;
 
+    let reloadTimeout: number | null = null;
+    let lastReloadTime = 0;
+    const RELOAD_DEBOUNCE_MS = 2000; // Only reload if last reload was more than 2 seconds ago
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        console.log('[Visibility] Page became visible, reloading tasks...');
-        loadUserData(false); // Don't show notification for auto-refresh
+        const now = Date.now();
+        // Only reload if enough time has passed since last reload
+        if (now - lastReloadTime > RELOAD_DEBOUNCE_MS) {
+          // Clear any pending reload
+          if (reloadTimeout) {
+            clearTimeout(reloadTimeout);
+          }
+          // Debounce the reload slightly
+          reloadTimeout = window.setTimeout(() => {
+            console.log('[Visibility] Page became visible, reloading tasks...');
+            lastReloadTime = Date.now();
+            loadUserData(false); // Don't show notification for auto-refresh
+          }, 500); // Small delay to prevent rapid-fire reloads
+        }
       }
     };
 
     const handleFocus = () => {
-      console.log('[Focus] Window focused, reloading tasks...');
-      loadUserData(false); // Don't show notification for auto-refresh
+      const now = Date.now();
+      // Only reload if enough time has passed since last reload
+      if (now - lastReloadTime > RELOAD_DEBOUNCE_MS) {
+        // Clear any pending reload
+        if (reloadTimeout) {
+          clearTimeout(reloadTimeout);
+        }
+        // Debounce the reload slightly
+        reloadTimeout = window.setTimeout(() => {
+          console.log('[Focus] Window focused, reloading tasks...');
+          lastReloadTime = Date.now();
+          loadUserData(false); // Don't show notification for auto-refresh
+        }, 500); // Small delay to prevent rapid-fire reloads
+      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      if (reloadTimeout) {
+        clearTimeout(reloadTimeout);
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
   }, [user]);
 
   const handleAuthSuccess = async () => {
-    await loadUserData();
+    // Reset to today view on successful auth
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    setTodayViewDate(today);
+    setCurrentView('today');
+    setSearchQuery('');
+    
+    // Scroll to top on successful auth
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // Add a small delay to ensure auth session is fully established
+    setTimeout(() => {
+      loadUserData();
+    }, 300);
   };
 
   const handleLogout = async () => {
@@ -404,7 +642,7 @@ function App() {
     
     if (taskData.recurrence && dueDate) {
       // Generate all recurring occurrences (exactly 50 instances)
-      const multiplier = taskData.recurrence === 'custom' ? (taskData.recurrenceMultiplier || 1) : 1;
+      const multiplier = taskData.recurrence === 'custom' ? (taskData.recurrenceMultiplier ?? 1) : 1;
       const customFreq = taskData.recurrence === 'custom' ? taskData.customFrequency : undefined;
       const recurringDates = generateRecurringDates(
         dueDate, 
@@ -509,7 +747,7 @@ function App() {
       // Create new recurring occurrences
       const recurrenceGroupId = generateId();
       const dueDate = updates.dueDate || existingTask.dueDate;
-      const multiplier = updates.recurrence === 'custom' ? (updates.recurrenceMultiplier || existingTask.recurrenceMultiplier || 1) : 1;
+      const multiplier = updates.recurrence === 'custom' ? (updates.recurrenceMultiplier ?? existingTask.recurrenceMultiplier ?? 1) : 1;
       const customFreq = updates.recurrence === 'custom' ? (updates.customFrequency || existingTask.customFrequency) : undefined;
       const recurringDates = generateRecurringDates(dueDate!, updates.recurrence || existingTask.recurrence!, 50, multiplier, customFreq);
       
@@ -549,7 +787,7 @@ function App() {
       const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
       const remainingTasks = tasks.filter(task => !taskIdsToRemove.has(task.id));
       
-      const multiplier = existingTask.recurrence === 'custom' ? (existingTask.recurrenceMultiplier || 1) : 1;
+      const multiplier = existingTask.recurrence === 'custom' ? (existingTask.recurrenceMultiplier ?? 1) : 1;
       const customFreq = existingTask.recurrence === 'custom' ? existingTask.customFrequency : undefined;
       const recurringDates = generateRecurringDates(updates.dueDate, existingTask.recurrence, 50, multiplier, customFreq);
       const normalizedTags = normalizeTags(updates.tags || existingTask.tags);
@@ -644,10 +882,7 @@ function App() {
     }
   };
 
-  const deleteTask = async (id: string) => {
-    const taskToDelete = tasks.find(task => task.id === id);
-    if (!taskToDelete) return;
-
+  const performDelete = async (tasksToDelete: Task[], taskToDelete: Task) => {
     // Clear any existing undo timeout
     if (deletedTask) {
       clearTimeout(deletedTask.timeoutId);
@@ -655,22 +890,6 @@ function App() {
 
     // Capture original tasks before modification for error recovery
     const originalTasks = tasks;
-
-    // If this is a recurring task, delete all future occurrences (due date >= today OR incomplete and overdue)
-    let tasksToDelete: Task[] = [];
-    if (taskToDelete.recurrenceGroupId) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      tasksToDelete = tasks.filter(task => {
-        if (task.recurrenceGroupId !== taskToDelete.recurrenceGroupId) return false;
-        const taskDate = new Date(task.dueDate!);
-        taskDate.setHours(0, 0, 0, 0);
-        // Delete if future (>= today) OR incomplete and overdue
-        return taskDate >= today || (!task.completed && taskDate < today);
-      });
-    } else {
-      tasksToDelete = [taskToDelete];
-    }
 
     // Remove tasks from list
     const taskIdsToDelete = new Set(tasksToDelete.map(t => t.id));
@@ -694,6 +913,54 @@ function App() {
     }, 3000) as unknown as number;
 
     setDeletedTask({ task: taskToDelete, tasks: tasksToDelete, timeoutId });
+  };
+
+  const deleteTask = async (id: string) => {
+    const taskToDelete = tasks.find(task => task.id === id);
+    if (!taskToDelete) return;
+
+    // If this is a recurring task, show dialog to choose deletion option
+    if (taskToDelete.recurrenceGroupId) {
+      setPendingDeleteTask(taskToDelete);
+      return;
+    }
+
+    // For non-recurring tasks, delete immediately
+    await performDelete([taskToDelete], taskToDelete);
+  };
+
+  const deleteFutureOccurrences = async () => {
+    if (!pendingDeleteTask || !pendingDeleteTask.dueDate) return;
+
+    // Get the selected task's due date as a string in 'yyyy-MM-dd' format for comparison
+    const selectedTaskDateStr = pendingDeleteTask.dueDate.split('T')[0];
+    
+    const tasksToDelete = tasks.filter(task => {
+      if (task.recurrenceGroupId !== pendingDeleteTask.recurrenceGroupId) return false;
+      if (!task.dueDate) return false;
+      
+      // Extract date part from task.dueDate (handles both 'yyyy-MM-dd' and ISO strings)
+      const taskDateStr = task.dueDate.split('T')[0];
+      
+      // Delete if >= selected task's due date - string comparison works for 'yyyy-MM-dd' format
+      return taskDateStr >= selectedTaskDateStr;
+    });
+
+    setPendingDeleteTask(null);
+    await performDelete(tasksToDelete, pendingDeleteTask);
+  };
+
+  const deleteOpenOccurrences = async () => {
+    if (!pendingDeleteTask) return;
+
+    const tasksToDelete = tasks.filter(task => {
+      if (task.recurrenceGroupId !== pendingDeleteTask.recurrenceGroupId) return false;
+      // Delete all incomplete tasks (regardless of date)
+      return !task.completed;
+    });
+
+    setPendingDeleteTask(null);
+    await performDelete(tasksToDelete, pendingDeleteTask);
   };
 
   const undoDelete = async () => {
@@ -762,7 +1029,7 @@ function App() {
         const nextStartDate = formatDate(currentDate);
         
         // Generate next 50 instances
-        const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier || 1) : 1;
+        const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier ?? 1) : 1;
         const customFreq = task.recurrence === 'custom' ? task.customFrequency : undefined;
         const recurringDates = generateRecurringDates(
           nextStartDate,
@@ -1084,6 +1351,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
               setTodayViewDate(today);
               setCurrentView('today');
               setSearchQuery('');
+              // Scroll handled by useEffect watching currentView
             }}
           >
              Poop Task
@@ -1163,7 +1431,8 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
               today.setHours(0, 0, 0, 0);
               setTodayViewDate(today);
               setCurrentView('today'); 
-              setSearchQuery(''); 
+              setSearchQuery('');
+              // Scroll handled by useEffect watching currentView
             }}
           >
             Today
@@ -1260,6 +1529,16 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
           taskTitle={completedTask.task.title}
           onUndo={undoCompletion}
           onDismiss={() => setCompletedTask(null)}
+        />
+      )}
+
+      {pendingDeleteTask && (
+        <DeleteRecurringDialog
+          taskTitle={pendingDeleteTask.title}
+          taskDueDate={pendingDeleteTask.dueDate}
+          onDeleteFuture={deleteFutureOccurrences}
+          onDeleteOpen={deleteOpenOccurrences}
+          onCancel={() => setPendingDeleteTask(null)}
         />
       )}
 
