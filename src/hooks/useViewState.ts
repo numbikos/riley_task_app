@@ -2,17 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ViewType } from '../types';
 import { loadViewState, saveViewState } from '../utils/storage';
 
-const AUTH_DELAY_MS = 300;
 const VIEW_STATE_SAVE_DEBOUNCE_MS = 500;
-
-interface ViewState {
-  currentView: ViewType;
-  selectedDayDate: Date | null;
-  weekViewDate: Date | null;
-  todayViewDate: Date;
-  tomorrowViewDate: Date;
-  searchQuery: string;
-}
 
 /**
  * Custom hook for managing view state

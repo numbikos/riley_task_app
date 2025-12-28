@@ -1,4 +1,4 @@
-import { Task, RecurrenceType } from '../types';
+import { Task } from '../types';
 import { generateId } from '../utils/supabaseStorage';
 import { normalizeTags } from '../utils/taskOperations';
 import {

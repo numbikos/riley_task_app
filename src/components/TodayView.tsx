@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Task, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { isDateOverdue, formatDate, formatFullDate } from '../utils/dateUtils';

@@ -39,7 +39,7 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
   };
 
   // Separate recurring and non-recurring tasks - memoized
-  const { grouped, sortedTags, recurringByTag, sortedAllTags } = useMemo(() => {
+  const { grouped, recurringByTag, sortedAllTags } = useMemo(() => {
     const recurringTasks: Task[] = [];
     const nonRecurringTasks: Task[] = [];
     const recurringGroups: Map<string, Task[]> = new Map();
@@ -78,7 +78,7 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
       return a.localeCompare(b);
     });
 
-    return { grouped, sortedTags, recurringByTag, sortedAllTags };
+    return { grouped, recurringByTag, sortedAllTags };
   }, [tasks]);
 
   return (

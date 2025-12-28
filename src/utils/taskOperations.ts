@@ -62,8 +62,8 @@ export const getTodayTasks = (
   }).sort((a, b) => {
     // Sort by overdue status only if viewing today
     if (isToday) {
-      const aIsOverdue = isDateOverdue(a.dueDate);
-      const bIsOverdue = isDateOverdue(b.dueDate);
+      const aIsOverdue = a.dueDate ? isDateOverdue(a.dueDate) : false;
+      const bIsOverdue = b.dueDate ? isDateOverdue(b.dueDate) : false;
       
       if (aIsOverdue && !bIsOverdue) return 1; // a is overdue, b is today - put a after b
       if (!aIsOverdue && bIsOverdue) return -1; // a is today, b is overdue - put a before b

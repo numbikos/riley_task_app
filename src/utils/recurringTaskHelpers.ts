@@ -147,9 +147,6 @@ export const extendRecurringTaskInstances = (
   const nextStartDate = formatDate(lastDate);
 
   // Generate next batch of instances
-  const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier ?? 1) : 1;
-  const customFreq = task.recurrence === 'custom' ? task.customFrequency : undefined;
-  
   return createRecurringTaskInstances(
     {
       ...task,
