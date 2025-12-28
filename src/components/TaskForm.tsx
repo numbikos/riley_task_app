@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Task, Subtask, getTagColor, RecurrenceType } from '../types';
+import { Task, Subtask, TaskUpdate, getTagColor, RecurrenceType } from '../types';
 import { generateId, loadTags, loadTagColors } from '../utils/supabaseStorage';
 import { formatDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
@@ -276,7 +276,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
         if (!confirmed) {
           // User chose not to propagate - update current task only, don't propagate subtasks
           // We'll update the task directly without going through propagation logic
-          const taskData: Partial<Task> & { _skipSubtaskPropagation?: boolean } = {
+          const taskData: TaskUpdate = {
             title: title.trim(),
             dueDate: dueDate || task.dueDate || null,
             completed,

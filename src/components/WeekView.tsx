@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Task, getTagColor as getTagColorUtil } from '../types';
+import { Task, TaskUpdate, getTagColor as getTagColorUtil } from '../types';
 import { getNext5Days, formatDate, isSameDate, getDateDisplay, addDays, subDays, formatFullDate } from '../utils/dateUtils';
 import { startOfDay } from 'date-fns';
 
@@ -8,7 +8,7 @@ interface WeekViewProps {
   tagColors: Record<string, string>;
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
-  onUpdateTask: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask: (id: string, updates: TaskUpdate) => void;
   onNavigateToDay?: (date: Date, weekDate: Date) => void;
   initialWeekDate?: Date | null;
   onAddTask?: (date: Date) => void;
@@ -138,7 +138,7 @@ export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, o
     const targetDateStr = formatDate(targetDate);
     // Use a flag to indicate this is a drag-and-drop operation
     // This tells updateTask to only update this instance, not regenerate the recurrence group
-    onUpdateTask(taskId, { dueDate: targetDateStr, _dragDrop: true } as any);
+    onUpdateTask(taskId, { dueDate: targetDateStr, _dragDrop: true });
   };
 
   const handleDragOver = (e: React.DragEvent) => {

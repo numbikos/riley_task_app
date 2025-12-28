@@ -1,4 +1,4 @@
-import { Task } from '../types';
+import { Task, TaskUpdate } from '../types';
 import { generateId } from '../utils/supabaseStorage';
 import { normalizeTags } from '../utils/taskOperations';
 import {
@@ -46,7 +46,7 @@ export const useRecurringTasks = (
    */
   const updateRecurringTask = (
     id: string,
-    updates: Partial<Task>
+    updates: TaskUpdate
   ) => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
@@ -63,7 +63,7 @@ export const useRecurringTasks = (
       : true;
     
     const dueDateChanged = updates.dueDate !== undefined && updates.dueDate !== existingTask.dueDate;
-    const isDragDrop = (updates as any)._dragDrop === true;
+    const isDragDrop = updates._dragDrop === true;
     
     // Only regenerate if recurrence settings changed OR if editing the first instance's due date
     // BUT: Skip regeneration if this is a drag-and-drop operation
@@ -134,7 +134,7 @@ export const useRecurringTasks = (
         // Check if subtasks changed and should be propagated
         const subtasksChanged = updates.subtasks !== undefined && 
           JSON.stringify(updates.subtasks) !== JSON.stringify(existingTask.subtasks);
-        const skipSubtaskPropagation = (updates as any)._skipSubtaskPropagation === true;
+        const skipSubtaskPropagation = updates._skipSubtaskPropagation === true;
         
         // Extract fields that should propagate
         const propagatingUpdates: Partial<Task> = {};
@@ -152,7 +152,7 @@ export const useRecurringTasks = (
         setTasks(tasks.map(task => {
           if (task.id === id) {
             // Update the specific task being edited
-            const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates as any;
+            const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates;
             const updatedTask = { ...task, ...cleanUpdates, lastModified: new Date().toISOString() };
             if (normalizedTags) {
               updatedTask.tags = normalizedTags;
@@ -176,7 +176,7 @@ export const useRecurringTasks = (
         const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
         setTasks(tasks.map(task => {
           if (task.id === id) {
-            const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates as any;
+            const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates;
             const updatedTask = { ...task, ...cleanUpdates, lastModified: new Date().toISOString() };
             if (normalizedTags) {
               updatedTask.tags = normalizedTags;

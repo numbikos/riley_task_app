@@ -7,19 +7,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Build outputs
 dist
 dist-ssr
+build
 *.local
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+.env.production
+
+# Testing
+coverage
+*.lcov
+.nyc_output
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo
@@ -28,12 +41,14 @@ dist-ssr
 *.sln
 *.sw?
 
-# Test files
-src/test/
-src/**/__tests__/
-*.test.ts
-*.test.tsx
-*.spec.ts
-*.spec.tsx
-TESTING_CHECKLIST.md
-TESTING_QUICK_START.md
+# OS files
+Thumbs.db
+.DS_Store
+
+# Debug
+.vscode/launch.json
+
+# Temporary files
+*.tmp
+*.temp
+.cache

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { UNDO_TIMEOUT_MS } from '../hooks/useTaskManagement';
 
 interface UndoNotificationProps {
   taskTitle: string;
@@ -10,7 +11,7 @@ export default function UndoNotification({ taskTitle, onUndo, onDismiss }: UndoN
   useEffect(() => {
     const timer = setTimeout(() => {
       onDismiss();
-    }, 3000); // Auto-dismiss after 3 seconds
+    }, UNDO_TIMEOUT_MS);
 
     return () => clearTimeout(timer);
   }, [onDismiss]);

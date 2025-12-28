@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { ViewType } from '../types';
 import { loadViewState, saveViewState } from '../utils/storage';
+import type { User } from '@supabase/supabase-js';
 
 const VIEW_STATE_SAVE_DEBOUNCE_MS = 500;
 
 /**
  * Custom hook for managing view state
  */
-export const useViewState = (user: any) => {
+export const useViewState = (user: User | null) => {
   const savedViewState = loadViewState();
   
   const [currentView, setCurrentView] = useState<ViewType>(savedViewState?.currentView || 'today');

@@ -81,7 +81,7 @@ export const getNext5Days = (date: Date = new Date()): Date[] => {
   // Get the next 5 days starting from the given date
   for (let i = 0; i < 5; i++) {
     const nextDate = new Date(d);
-    nextDate.setDate(d.getDate() + i);
+    nextDate.setDate(nextDate.getDate() + i);
     dates.push(startOfDay(nextDate));
   }
   return dates;

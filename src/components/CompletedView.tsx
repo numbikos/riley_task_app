@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Task } from '../types';
+import { Task, TaskUpdate } from '../types';
 import TaskCard from './TaskCard';
 
 interface CompletedViewProps {
@@ -8,7 +8,7 @@ interface CompletedViewProps {
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
-  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask?: (id: string, updates: TaskUpdate) => void;
 }
 
 export default function CompletedView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onUpdateTask }: CompletedViewProps) {

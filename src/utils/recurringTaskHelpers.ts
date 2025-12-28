@@ -102,20 +102,21 @@ export const getTasksToRemoveForRegeneration = (
   recurrenceGroupId: string
 ): Task[] => {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  today.setUTCHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split('T')[0];
   
   return tasks.filter(task => {
     if (task.recurrenceGroupId !== recurrenceGroupId) return false;
     if (!task.dueDate) return false;
     
-    const taskDate = new Date(task.dueDate);
-    taskDate.setHours(0, 0, 0, 0);
+    // Compare date strings directly to avoid timezone issues
+    const taskDateStr = task.dueDate.split('T')[0];
     
     // Delete all future instances (including today, regardless of completion)
-    if (taskDate >= today) return true;
+    if (taskDateStr >= todayStr) return true;
     
     // Delete incomplete overdue instances
-    if (!task.completed && taskDate < today) return true;
+    if (!task.completed && taskDateStr < todayStr) return true;
     
     // Keep completed past instances
     return false;

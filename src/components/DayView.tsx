@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Task } from '../types';
+import { Task, TaskUpdate } from '../types';
 import TaskCard from './TaskCard';
 import { startOfDay } from 'date-fns';
 import { formatFullDate } from '../utils/dateUtils';
@@ -11,7 +11,7 @@ interface DayViewProps {
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
-  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask?: (id: string, updates: TaskUpdate) => void;
   onBackToWeek?: () => void;
   onNavigateDate?: (date: Date) => void;
   onAddTask?: (date: Date) => void;

@@ -1,4 +1,4 @@
-import { Task } from '../types';
+import { Task, Subtask } from '../types';
 import { supabase } from './supabase';
 import { logger } from './logger';
 
@@ -9,7 +9,7 @@ interface DatabaseTask {
   title: string;
   due_date: string | null;
   completed: boolean;
-  subtasks: any; // JSONB
+  subtasks: Subtask[]; // JSONB
   tags: string[];
   created_at: string;
   last_modified: string;

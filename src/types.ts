@@ -25,6 +25,21 @@ export interface Task {
 
 export type ViewType = 'today' | 'tomorrow' | 'week' | 'all' | 'completed' | 'day';
 
+/**
+ * Internal flags used for task updates (not persisted to database)
+ */
+export interface TaskUpdateFlags {
+  /** Flag to indicate this is a drag-and-drop operation (prevents recurrence regeneration) */
+  _dragDrop?: boolean;
+  /** Flag to skip subtask propagation to future recurring instances */
+  _skipSubtaskPropagation?: boolean;
+}
+
+/**
+ * Task update type that includes both regular task fields and internal flags
+ */
+export type TaskUpdate = Partial<Task> & TaskUpdateFlags;
+
 export const DEFAULT_TAG_COLORS: Record<string, string> = {
   'zero': '#0080FF',
   'ollie': '#40E0D0',

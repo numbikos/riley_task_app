@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { Task } from '../types';
+import { Task, TaskUpdate } from '../types';
 import { loadTasks, saveTasks, deleteTasks as deleteTasksFromDatabase, generateId } from '../utils/supabaseStorage';
 import { supabase } from '../utils/supabase';
 import { normalizeTags } from '../utils/taskOperations';
 import { logger } from '../utils/logger';
+import type { User } from '@supabase/supabase-js';
 
 const RELOAD_DEBOUNCE_MS = 2000;
 const AUTH_DELAY_MS = 300;
 const LOAD_TIMEOUT_MS = 30000;
+export const UNDO_TIMEOUT_MS = 3000;
 
 interface DeletedTaskState {
   task: Task;
@@ -23,7 +25,7 @@ interface CompletedTaskState {
 /**
  * Custom hook for managing tasks (CRUD operations)
  */
-export const useTaskManagement = (user: any) => {
+export const useTaskManagement = (user: User | null) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false);
   const [isLoadingFromDatabase, setIsLoadingFromDatabase] = useState(false);
@@ -349,7 +351,7 @@ export const useTaskManagement = (user: any) => {
 
   // Update a non-recurring task
   // Note: Recurring tasks should be handled by useRecurringTasks hook
-  const updateTask = (id: string, updates: Partial<Task>) => {
+  const updateTask = (id: string, updates: TaskUpdate) => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
     
@@ -364,7 +366,7 @@ export const useTaskManagement = (user: any) => {
     setTasks(tasks.map(task => {
       if (task.id === id) {
         // Remove internal flags before saving
-        const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates as any;
+        const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates;
         const updatedTask = { ...task, ...cleanUpdates, lastModified: new Date().toISOString() };
         if (normalizedTags) {
           updatedTask.tags = normalizedTags;
@@ -401,10 +403,10 @@ export const useTaskManagement = (user: any) => {
       return;
     }
 
-    // Set up undo with 3 second timeout
+    // Set up undo with timeout
     const timeoutId = window.setTimeout(() => {
       setDeletedTask(null);
-    }, 3000) as unknown as number;
+    }, UNDO_TIMEOUT_MS) as unknown as number;
 
     setDeletedTask({ task: taskToDelete, tasks: tasksToDelete, timeoutId });
   };
@@ -430,7 +432,7 @@ export const useTaskManagement = (user: any) => {
     }
   };
 
-  const undoCompletion = (updateTaskFn?: (id: string, updates: Partial<Task>) => void) => {
+  const undoCompletion = (updateTaskFn?: (id: string, updates: TaskUpdate) => void) => {
     if (completedTask) {
       // Restore the task to its previous state
       const taskToRestore = completedTask.previousState;

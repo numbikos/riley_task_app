@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Task, getTagColor } from '../types';
+import { Task, TaskUpdate, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import RecurringTaskGroup from './RecurringTaskGroup';
 import { groupTasksByTag } from '../utils/taskUtils';
@@ -11,7 +11,7 @@ interface AllTasksViewProps {
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
   onDeleteGroup?: (groupId: string) => void;
-  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask?: (id: string, updates: TaskUpdate) => void;
 }
 
 export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onDeleteGroup, onUpdateTask }: AllTasksViewProps) {

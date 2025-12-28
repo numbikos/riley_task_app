@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { getTagColor, DEFAULT_TAG_COLORS } from '../types';
+import { Task, getTagColor, DEFAULT_TAG_COLORS } from '../types';
 import { loadTags, saveTags, loadTagColors, saveTagColors, deleteTagColor } from '../utils/supabaseStorage';
 import { logger } from '../utils/logger';
 
 interface TagManagerProps {
-  tasks: any[];
-  onUpdateTasks: (updatedTasks: any[]) => void;
+  tasks: Task[];
+  onUpdateTasks: (updatedTasks: Task[]) => void;
   onTagColorsChange?: (colors: Record<string, string>) => void;
   onClose: () => void;
 }

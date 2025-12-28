@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Task, getTagColor } from '../types';
+import { Task, TaskUpdate, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { formatRecurrenceDisplay, getDateDisplay } from '../utils/dateUtils';
 
@@ -10,7 +10,7 @@ interface RecurringTaskGroupProps {
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void; // For individual task deletion (shows dialog)
   onDeleteGroup?: (groupId: string) => void; // For group header deletion (deletes all incomplete)
-  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask?: (id: string, updates: TaskUpdate) => void;
   hideActions?: boolean; // If true, hide edit and delete buttons
 }
 

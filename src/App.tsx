@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Task } from './types';
+import { Task, TaskUpdate } from './types';
 import { isSupabaseConfigured } from './utils/supabase';
 import { isDateToday, isDateTomorrow, isDateOverdue, formatDate } from './utils/dateUtils';
 import { loadTagColors, saveTasks } from './utils/supabaseStorage';
@@ -125,7 +125,7 @@ function App() {
   }, [addRecurringTask, addTaskBase]);
 
   // Combined update task function (handles both recurring and non-recurring)
-  const updateTask = useCallback((id: string, updates: Partial<Task>) => {
+  const updateTask = useCallback((id: string, updates: TaskUpdate) => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
 

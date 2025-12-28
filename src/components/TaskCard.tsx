@@ -1,4 +1,4 @@
-import { Task, getTagColor } from '../types';
+import { Task, TaskUpdate, getTagColor } from '../types';
 import { getDateDisplay, isDateOverdue, formatRecurrenceDisplay } from '../utils/dateUtils';
 
 interface TaskCardProps {
@@ -7,7 +7,7 @@ interface TaskCardProps {
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
-  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask?: (id: string, updates: TaskUpdate) => void;
   showDate?: boolean;
   showTags?: boolean;
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Task, getTagColor } from '../types';
+import { Task, TaskUpdate, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { formatDate, formatFullDate } from '../utils/dateUtils';
 import { startOfDay } from 'date-fns';
@@ -12,7 +12,7 @@ interface TomorrowViewProps {
   onToggleComplete: (id: string) => void;
   onEdit: (task: Task) => void;
   onDelete: (id: string) => void;
-  onUpdateTask?: (id: string, updates: Partial<Task>) => void;
+  onUpdateTask?: (id: string, updates: TaskUpdate) => void;
   onNavigateDate: (date: Date) => void;
   onAddTask?: (date: Date) => void;
 }
