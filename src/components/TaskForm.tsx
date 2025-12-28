@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Task, Subtask, getTagColor, RecurrenceType } from '../types';
 import { generateId, loadTags, loadTagColors } from '../utils/supabaseStorage';
 import { formatDate } from '../utils/dateUtils';
+import { logger } from '../utils/logger';
 
 interface TaskFormProps {
   task: Task | null;
@@ -61,9 +62,9 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
       try {
         const tags = await loadTags();
         setAvailableTags(tags);
-        console.log('[TaskForm] Loaded tags:', tags);
+        logger.debug('[TaskForm] Loaded tags:', tags);
       } catch (error) {
-        console.error('[TaskForm] Failed to load tags:', error);
+        logger.error('[TaskForm] Failed to load tags:', error);
         setAvailableTags([]);
       } finally {
         setIsLoadingTags(false);
@@ -75,7 +76,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
         const colors = await loadTagColors();
         setTagColors(colors);
       } catch (error) {
-        console.error('[TaskForm] Failed to load tag colors:', error);
+        logger.error('[TaskForm] Failed to load tag colors:', error);
         setTagColors({});
       }
     };
@@ -92,9 +93,9 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
       try {
         const tags = await loadTags();
         setAvailableTags(tags);
-        console.log('[TaskForm] Reloaded tags:', tags);
+        logger.debug('[TaskForm] Reloaded tags:', tags);
       } catch (error) {
-        console.error('[TaskForm] Failed to reload tags:', error);
+        logger.error('[TaskForm] Failed to reload tags:', error);
       } finally {
         setIsLoadingTags(false);
       }

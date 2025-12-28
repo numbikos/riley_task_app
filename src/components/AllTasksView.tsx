@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Task, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import RecurringTaskGroup from './RecurringTaskGroup';
@@ -38,44 +38,48 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
     });
   };
 
-  // Separate recurring and non-recurring tasks
-  const recurringTasks: Task[] = [];
-  const nonRecurringTasks: Task[] = [];
-  const recurringGroups: Map<string, Task[]> = new Map();
+  // Separate recurring and non-recurring tasks - memoized
+  const { grouped, sortedTags, recurringByTag, sortedAllTags } = useMemo(() => {
+    const recurringTasks: Task[] = [];
+    const nonRecurringTasks: Task[] = [];
+    const recurringGroups: Map<string, Task[]> = new Map();
 
-  tasks.forEach(task => {
-    if (task.recurrenceGroupId) {
-      if (!recurringGroups.has(task.recurrenceGroupId)) {
-        recurringGroups.set(task.recurrenceGroupId, []);
+    tasks.forEach(task => {
+      if (task.recurrenceGroupId) {
+        if (!recurringGroups.has(task.recurrenceGroupId)) {
+          recurringGroups.set(task.recurrenceGroupId, []);
+        }
+        recurringGroups.get(task.recurrenceGroupId)!.push(task);
+        recurringTasks.push(task);
+      } else {
+        nonRecurringTasks.push(task);
       }
-      recurringGroups.get(task.recurrenceGroupId)!.push(task);
-      recurringTasks.push(task);
-    } else {
-      nonRecurringTasks.push(task);
-    }
-  });
+    });
 
-  // Group non-recurring tasks by tag
-  const { grouped, sortedTags } = groupTasksByTag(nonRecurringTasks);
-  
-  // Group recurring tasks by tag (using the first task in each group as representative)
-  const recurringByTag: { [key: string]: Map<string, Task[]> } = {};
-  recurringGroups.forEach((groupTasks, groupId) => {
-    const representativeTask = groupTasks[0];
-    const tag = representativeTask.tags.length > 0 ? representativeTask.tags[0].toLowerCase() : 'untagged';
-    if (!recurringByTag[tag]) {
-      recurringByTag[tag] = new Map();
-    }
-    recurringByTag[tag].set(groupId, groupTasks);
-  });
+    // Group non-recurring tasks by tag
+    const { grouped, sortedTags } = groupTasksByTag(nonRecurringTasks);
+    
+    // Group recurring tasks by tag (using the first task in each group as representative)
+    const recurringByTag: { [key: string]: Map<string, Task[]> } = {};
+    recurringGroups.forEach((groupTasks, groupId) => {
+      const representativeTask = groupTasks[0];
+      const tag = representativeTask.tags.length > 0 ? representativeTask.tags[0].toLowerCase() : 'untagged';
+      if (!recurringByTag[tag]) {
+        recurringByTag[tag] = new Map();
+      }
+      recurringByTag[tag].set(groupId, groupTasks);
+    });
 
-  // Get all tags that have either recurring or non-recurring tasks
-  const allTags = new Set([...sortedTags, ...Object.keys(recurringByTag)]);
-  const sortedAllTags = Array.from(allTags).sort((a, b) => {
-    if (a === 'untagged') return 1;
-    if (b === 'untagged') return -1;
-    return a.localeCompare(b);
-  });
+    // Get all tags that have either recurring or non-recurring tasks
+    const allTags = new Set([...sortedTags, ...Object.keys(recurringByTag)]);
+    const sortedAllTags = Array.from(allTags).sort((a, b) => {
+      if (a === 'untagged') return 1;
+      if (b === 'untagged') return -1;
+      return a.localeCompare(b);
+    });
+
+    return { grouped, sortedTags, recurringByTag, sortedAllTags };
+  }, [tasks]);
 
   return (
     <div className="task-list">

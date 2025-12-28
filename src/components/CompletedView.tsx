@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Task } from '../types';
 import TaskCard from './TaskCard';
 
@@ -12,11 +13,21 @@ interface CompletedViewProps {
 
 export default function CompletedView({ tasks, tagColors, onToggleComplete, onEdit, onDelete, onUpdateTask }: CompletedViewProps) {
   // Sort by most recently completed (lastModified) - most recent first
-  const sortedTasks = [...tasks].sort((a, b) => {
-    const aTime = new Date(a.lastModified).getTime();
-    const bTime = new Date(b.lastModified).getTime();
-    return bTime - aTime; // Descending order - most recent first
-  });
+  // Secondary sort by createdAt (most recent first) for stable sorting when lastModified is identical
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => {
+      const aTime = new Date(a.lastModified).getTime();
+      const bTime = new Date(b.lastModified).getTime();
+      
+      if (aTime !== bTime) {
+        return bTime - aTime; // Descending order - most recent first
+      }
+      // If lastModified is the same, sort by createdAt (most recent first) as tiebreaker
+      const aCreatedTime = new Date(a.createdAt).getTime();
+      const bCreatedTime = new Date(b.createdAt).getTime();
+      return bCreatedTime - aCreatedTime; // Descending order - most recent first
+    });
+  }, [tasks]);
 
   if (sortedTasks.length === 0) {
     return (

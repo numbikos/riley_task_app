@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Task, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { isDateOverdue, formatDate, formatFullDate } from '../utils/dateUtils';
@@ -20,7 +20,17 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
   const [collapsedTags, setCollapsedTags] = useState<Set<string>>(new Set());
 
   const fullDateDisplay = formatFullDate(date);
-  const isToday = formatDate(date) === formatDate(new Date());
+  const isToday = useMemo(() => formatDate(date) === formatDate(new Date()), [date]);
+
+  // Separate overdue and today tasks (only when viewing today) - memoized
+  const { overdueTasks, todayTasks } = useMemo(() => {
+    if (isToday) {
+      const overdue = tasks.filter(task => isDateOverdue(task.dueDate));
+      const today = tasks.filter(task => !isDateOverdue(task.dueDate));
+      return { overdueTasks: overdue, todayTasks: today };
+    }
+    return { overdueTasks: [], todayTasks: tasks };
+  }, [tasks, isToday]);
 
   if (tasks.length === 0) {
     return (
@@ -42,10 +52,6 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
     );
   }
 
-  // Separate overdue and today tasks (only when viewing today)
-  const overdueTasks = isToday ? tasks.filter(task => isDateOverdue(task.dueDate)) : [];
-  const todayTasks = isToday ? tasks.filter(task => !isDateOverdue(task.dueDate)) : tasks;
-
   const toggleTagCollapse = (tag: string) => {
     setCollapsedTags(prev => {
       const newSet = new Set(prev);
@@ -58,7 +64,7 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
     });
   };
 
-  const renderGroupedTasks = (taskList: Task[], showDate: boolean = false) => {
+  const renderGroupedTasks = useCallback((taskList: Task[], showDate: boolean = false) => {
     const { grouped, sortedTags } = groupTasksByTag(taskList);
     
     return sortedTags.map(tag => {
@@ -104,7 +110,7 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
         </div>
       );
     });
-  };
+  }, [collapsedTags, tagColors, onToggleComplete, onEdit, onDelete, onUpdateTask]);
 
   return (
     <div>

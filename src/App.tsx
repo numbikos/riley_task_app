@@ -1,10 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import { Task, ViewType, RecurrenceType } from './types';
-import { loadTasks as loadTasksFromStorage, loadTagColors as loadTagColorsFromStorage, loadViewState, saveViewState } from './utils/storage';
-import { loadTasks, saveTasks, generateId, loadTagColors, saveTagColors, deleteTasks as deleteTasksFromDatabase } from './utils/supabaseStorage';
-import { supabase, isSupabaseConfigured } from './utils/supabase';
-import { isDateToday, isDateTomorrow, isDateOverdue, generateRecurringDates, formatDate } from './utils/dateUtils';
-import { startOfDay } from 'date-fns';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Task } from './types';
+import { isSupabaseConfigured } from './utils/supabase';
+import { isDateToday, isDateTomorrow, isDateOverdue, formatDate } from './utils/dateUtils';
+import { loadTagColors, saveTasks } from './utils/supabaseStorage';
+import { useAuth } from './hooks/useAuth';
+import { useViewState } from './hooks/useViewState';
+import { useTaskManagement } from './hooks/useTaskManagement';
+import { useRecurringTasks } from './hooks/useRecurringTasks';
+import { logger } from './utils/logger';
+import {
+  filterTasksBySearch,
+  getTodayTasks,
+  getTomorrowTasks,
+  getDayTasks,
+  getWeekTasks,
+  getCompletedTasks,
+} from './utils/taskOperations';
 import TodayView from './components/TodayView';
 import TomorrowView from './components/TomorrowView';
 import DayView from './components/DayView';
@@ -20,338 +31,61 @@ import Auth from './components/Auth';
 import './App.css';
 
 function App() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [tagColors, setTagColors] = useState<Record<string, string>>({});
+  // Authentication
+  const { user, loading, signOut } = useAuth();
   
-  // Load view state from localStorage on initialization
-  const savedViewState = loadViewState();
-  const [currentView, setCurrentView] = useState<ViewType>(savedViewState?.currentView || 'today');
+  // View state
+  const {
+    currentView,
+    setCurrentView,
+    selectedDayDate,
+    setSelectedDayDate,
+    weekViewDate,
+    setWeekViewDate,
+    todayViewDate,
+    setTodayViewDate,
+    tomorrowViewDate,
+    setTomorrowViewDate,
+    searchQuery,
+    setSearchQuery,
+    resetToToday,
+  } = useViewState(user);
+
+  // Task management
+  const {
+    tasks,
+    setTasks,
+    addTask: addTaskBase,
+    updateTask: updateTaskBase,
+    performDelete,
+    undoDelete,
+    undoCompletion,
+    loadUserData,
+    deletedTask,
+    setDeletedTask,
+    completedTask,
+    setCompletedTask,
+    migrationNotification,
+    setMigrationNotification,
+  } = useTaskManagement(user);
+
+  // Recurring tasks
+  const [autoRenewNotification, setAutoRenewNotification] = useState<{ taskTitle: string; count: number } | null>(null);
+  const {
+    addRecurringTask,
+    updateRecurringTask,
+    extendRecurringTask,
+    handleAutoRenewal,
+  } = useRecurringTasks(tasks, setTasks, setAutoRenewNotification);
+
+  // UI state
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [initialDueDate, setInitialDueDate] = useState<string | null>(null);
-  const [deletedTask, setDeletedTask] = useState<{ task: Task; tasks: Task[]; timeoutId: number } | null>(null);
-  const [completedTask, setCompletedTask] = useState<{ task: Task; previousState: Task } | null>(null);
-  const [autoRenewNotification, setAutoRenewNotification] = useState<{ taskTitle: string; count: number } | null>(null);
-  const [migrationNotification, setMigrationNotification] = useState<string | null>(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
   const [showTagManager, setShowTagManager] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [hasLoadedTasks, setHasLoadedTasks] = useState(false);
-  const [isLoadingFromDatabase, setIsLoadingFromDatabase] = useState(false);
-  const isSavingRef = useRef(false);
-  const lastSavedTasksRef = useRef<string>('');
-  const isLoadingUserDataRef = useRef(false);
-  const [selectedDayDate, setSelectedDayDate] = useState<Date | null>(() => {
-    if (savedViewState?.selectedDayDate) {
-      const date = new Date(savedViewState.selectedDayDate);
-      date.setHours(0, 0, 0, 0);
-      return date;
-    }
-    return null;
-  });
-  const [weekViewDate, setWeekViewDate] = useState<Date | null>(() => {
-    if (savedViewState?.weekViewDate) {
-      const date = new Date(savedViewState.weekViewDate);
-      date.setHours(0, 0, 0, 0);
-      return date;
-    }
-    return null;
-  });
-  const [todayViewDate, setTodayViewDate] = useState<Date>(() => {
-    if (savedViewState?.todayViewDate) {
-      const date = new Date(savedViewState.todayViewDate);
-      date.setHours(0, 0, 0, 0);
-      return date;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
-  });
-  const [tomorrowViewDate, setTomorrowViewDate] = useState<Date>(() => {
-    if (savedViewState?.tomorrowViewDate) {
-      const date = new Date(savedViewState.tomorrowViewDate);
-      date.setHours(0, 0, 0, 0);
-      return date;
-    }
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    return tomorrow;
-  });
-
-  // Check authentication state on mount
-  useEffect(() => {
-    let timeoutId: number | null = null;
-    let safetyTimeoutId: number | null = null;
-    let isMounted = true;
-    
-    // Safety net: Always set loading to false after 5 seconds maximum, no matter what
-    safetyTimeoutId = window.setTimeout(() => {
-      console.error('[App] SAFETY NET: Forcing loading to false after 5 seconds');
-      if (isMounted) {
-        setLoading(false);
-      }
-    }, 5000);
-    
-    const checkUser = async () => {
-      // If Supabase is not configured, skip auth check
-      if (!isSupabaseConfigured()) {
-        console.warn('[App] Supabase not configured - skipping auth check');
-        if (safetyTimeoutId) {
-          clearTimeout(safetyTimeoutId);
-          safetyTimeoutId = null;
-        }
-        if (isMounted) {
-          setLoading(false);
-          setUser(null);
-        }
-        return;
-      }
-
-      try {
-        // Set a very aggressive timeout to prevent infinite loading
-        timeoutId = window.setTimeout(() => {
-          console.warn('[App] Auth check timeout after 3 seconds - forcing loading to false');
-          if (isMounted) {
-            setLoading(false);
-            setUser(null);
-          }
-        }, 3000); // 3 second timeout - very aggressive
-
-        // Use Promise.race to ensure we don't hang forever
-        const authPromise = supabase.auth.getUser();
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Auth check timeout')), 3000);
-        });
-
-        const { data: { user }, error } = await Promise.race([
-          authPromise,
-          timeoutPromise
-        ]).catch((err) => {
-          console.error('[App] Auth check failed:', err);
-          return { data: { user: null }, error: err };
-        }) as { data: { user: any }, error: any };
-        
-        // Clear timeouts if we got a response
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (safetyTimeoutId) {
-          clearTimeout(safetyTimeoutId);
-          safetyTimeoutId = null;
-        }
-        
-        if (!isMounted) return;
-        
-        if (error) {
-          console.error('[App] Error checking user:', error);
-          // Still set loading to false so user can see auth screen
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-        
-        setUser(user);
-        setLoading(false);
-      } catch (error) {
-        console.error('[App] Exception checking user:', error);
-        // Clear timeouts on error
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (safetyTimeoutId) {
-          clearTimeout(safetyTimeoutId);
-          safetyTimeoutId = null;
-        }
-        // Always set loading to false, even on error
-        if (isMounted) {
-          setUser(null);
-          setLoading(false);
-        }
-      }
-    };
-
-    checkUser();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!isMounted) return;
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        // Don't load here - let the useEffect handle it with proper delay and view reset
-        // This prevents duplicate calls and ensures proper initialization
-      } else {
-        setTasks([]);
-        // Reset view when logging out
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        setTodayViewDate(today);
-        setCurrentView('today');
-        setSearchQuery('');
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      if (safetyTimeoutId) {
-        clearTimeout(safetyTimeoutId);
-      }
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // Save view state to localStorage whenever it changes
-  useEffect(() => {
-    if (user) { // Only save if user is authenticated
-      saveViewState({
-        currentView,
-        selectedDayDate: selectedDayDate ? selectedDayDate.toISOString() : null,
-        weekViewDate: weekViewDate ? weekViewDate.toISOString() : null,
-        todayViewDate: todayViewDate.toISOString(),
-        tomorrowViewDate: tomorrowViewDate.toISOString(),
-      });
-    }
-  }, [currentView, selectedDayDate, weekViewDate, todayViewDate, tomorrowViewDate, user]);
-
-  // Load user data when authenticated
-  const loadUserData = async (showNotification = false) => {
-    // Prevent multiple simultaneous calls
-    if (isLoadingUserDataRef.current) {
-      console.log('[loadUserData] Already loading, skipping duplicate call');
-      return;
-    }
-    
-    let timeoutId: number | null = null;
-    isLoadingUserDataRef.current = true;
-    
-    try {
-      setIsLoadingFromDatabase(true); // Prevent save effect from running
-      console.log('[loadUserData] Loading tasks from Supabase...');
-      
-      // Set a timeout to prevent infinite loading (increased to 30 seconds for slow networks)
-      const loadTasksWithTimeout = Promise.race<Task[]>([
-        loadTasks(),
-        new Promise<Task[]>((_, reject) => {
-          timeoutId = window.setTimeout(() => {
-            reject(new Error('Loading tasks timed out after 30 seconds'));
-          }, 30000); // Increased from 15 to 30 seconds
-        })
-      ]);
-      
-      const loadedTasks = await loadTasksWithTimeout;
-      
-      // Clear timeout if we got a response
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      
-      console.log(`[loadUserData] Loaded ${loadedTasks.length} tasks from Supabase`);
-      if (loadedTasks.length === 0) {
-        // Check if there's localStorage data to migrate
-        const localTasks = loadTasksFromStorage();
-        if (localTasks.length > 0) {
-          // Migrate localStorage data
-          await migrateLocalStorageData(localTasks);
-        } else {
-          // Start with empty task list
-          setTasks([]);
-          lastSavedTasksRef.current = JSON.stringify([]);
-        }
-      } else {
-        setTasks(loadedTasks);
-        // Update the last saved ref to prevent triggering save after initial load
-        lastSavedTasksRef.current = JSON.stringify(loadedTasks);
-        if (showNotification) {
-          setMigrationNotification(`Refreshed! Loaded ${loadedTasks.length} task${loadedTasks.length !== 1 ? 's' : ''}`);
-          setTimeout(() => {
-            setMigrationNotification(null);
-          }, 2000);
-        }
-      }
-      // Mark that we've loaded tasks at least once
-      setHasLoadedTasks(true);
-    } catch (error) {
-      console.error('[loadUserData] Failed to load tasks:', error);
-      // Clear timeout on error
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      
-      // Only show error if it's a real error, not just a timeout that might recover
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const isTimeoutError = errorMessage.includes('timed out');
-      
-      // For timeout errors, don't show notification - just log it
-      // The app will continue to function and may retry
-      if (!isTimeoutError) {
-        setMigrationNotification(`Failed to load tasks: ${errorMessage}. Try refreshing the page.`);
-        setTimeout(() => {
-          setMigrationNotification(null);
-        }, 5000);
-      } else {
-        console.warn('[loadUserData] Timeout occurred, but continuing without error notification');
-      }
-      
-      // Still mark as loaded to prevent infinite retries
-      setHasLoadedTasks(true);
-      // Set empty tasks so app can still function
-      setTasks([]);
-      lastSavedTasksRef.current = JSON.stringify([]);
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      setIsLoadingFromDatabase(false); // Re-enable save effect
-      isLoadingUserDataRef.current = false; // Allow future calls
-    }
-  };
-
-  // Migrate localStorage data to Supabase
-  const migrateLocalStorageData = async (localTasks: Task[]) => {
-    try {
-      setMigrationNotification('Migrating your tasks...');
-      
-      // Migrate tasks
-      await saveTasks(localTasks);
-      
-      // Migrate tag colors
-      const localTagColors = loadTagColorsFromStorage();
-      if (Object.keys(localTagColors).length > 0) {
-        await saveTagColors(localTagColors);
-      }
-      
-      // Clear localStorage after successful migration
-      localStorage.removeItem('riley-tasks');
-      localStorage.removeItem('riley-tags');
-      localStorage.removeItem('riley-tag-colors');
-      
-      // Reload tasks from database to get the new UUIDs
-      const migratedTasks = await loadTasks();
-      setTasks(migratedTasks);
-      
-      setMigrationNotification('Migration complete! Your tasks have been synced to the cloud.');
-      setTimeout(() => {
-        setMigrationNotification(null);
-      }, 5000);
-    } catch (error: any) {
-      console.error('Migration failed:', error);
-      const errorMessage = error?.message || 'Unknown error occurred';
-      setMigrationNotification(`Migration failed: ${errorMessage}. Check the browser console for details.`);
-      setTimeout(() => {
-        setMigrationNotification(null);
-      }, 8000);
-    }
-  };
+  const [tagColors, setTagColors] = useState<Record<string, string>>({});
 
   // Load tag colors when user is authenticated
   useEffect(() => {
@@ -362,574 +96,48 @@ function App() {
     }
   }, [user, loading]);
 
-  // Load tasks when user is authenticated
-  // Also reset view to 'today' when user logs in
-  useEffect(() => {
-    if (user && !loading) {
-      // Reset to today view when user logs in (don't restore previous view state)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      setTodayViewDate(today);
-      setCurrentView('today');
-      setSearchQuery('');
-      
-      // Scroll to top when logging in
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      
-      // Add a small delay to ensure auth session is fully established before loading
-      // This prevents race conditions and ensures Supabase RLS policies work correctly
-      const loadTimer = setTimeout(() => {
-        loadUserData();
-      }, 300); // 300ms delay to ensure session is ready
-      
-      return () => {
-        clearTimeout(loadTimer);
-      };
-    } else if (!user) {
-      // Reset view state when user logs out
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      setTodayViewDate(today);
-      setCurrentView('today');
-      setSearchQuery('');
-      // Scroll to top when logging out
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [user, loading]);
-
-  // Scroll to top when switching to 'today' view
-  useEffect(() => {
-    if (currentView === 'today') {
-      // Small delay to ensure view has rendered
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 100);
-    }
-  }, [currentView]);
-
-  // Save tasks to Supabase whenever they change
-  // BUT: Only save if:
-  // 1. We've loaded tasks at least once (to avoid deleting tasks on initial empty state)
-  // 2. We're not currently loading from database (to prevent infinite loop)
-  // 3. We're not already saving (to prevent concurrent saves)
-  // 4. Tasks actually changed (to prevent unnecessary saves)
-  useEffect(() => {
-    if (!user || !hasLoadedTasks || isLoadingFromDatabase || isSavingRef.current) {
-      if (user && !hasLoadedTasks) {
-        console.log('[Save Effect] Skipping save - tasks not loaded yet');
-      } else if (user && isLoadingFromDatabase) {
-        console.log('[Save Effect] Skipping save - currently loading from database');
-      } else if (user && isSavingRef.current) {
-        console.log('[Save Effect] Skipping save - already saving');
-      }
-      return;
-    }
-
-    // Check if tasks actually changed by comparing serialized versions
-    const currentTasksJson = JSON.stringify(tasks);
-    if (currentTasksJson === lastSavedTasksRef.current) {
-      console.log('[Save Effect] Skipping save - tasks unchanged');
-      return;
-    }
-
-    console.log(`[Save Effect] Saving ${tasks.length} tasks to Supabase`);
-    isSavingRef.current = true;
-    lastSavedTasksRef.current = currentTasksJson;
-    
-    saveTasks(tasks)
-      .then(() => {
-        console.log('[Save Effect] Successfully saved tasks');
-      })
-      .catch(error => {
-        console.error('[Save Effect] Failed to save tasks:', error);
-        // Reset the ref on error so we can retry
-        lastSavedTasksRef.current = '';
-      })
-      .finally(() => {
-        isSavingRef.current = false;
-      });
-  }, [tasks, user, hasLoadedTasks, isLoadingFromDatabase]);
-
-  // Real-time subscription for task updates
-  useEffect(() => {
-    if (!user) return;
-
-    console.log('[Real-time] Setting up subscription for user:', user.id);
-    
-    // Debounce reloads to avoid excessive queries
-    let reloadTimeout: number | null = null;
-    const debouncedReload = async () => {
-      if (reloadTimeout) {
-        clearTimeout(reloadTimeout);
-      }
-      reloadTimeout = window.setTimeout(async () => {
-        console.log('[Real-time] Debounced reload triggered');
-        setIsLoadingFromDatabase(true);
-        try {
-          const updatedTasks = await loadTasks();
-          console.log(`[Real-time] Reloaded ${updatedTasks.length} tasks after change`);
-          
-          // Update the last saved ref to prevent triggering save after reload
-          lastSavedTasksRef.current = JSON.stringify(updatedTasks);
-          
-          setTasks(updatedTasks);
-        } catch (error) {
-          console.error('[Real-time] Error reloading tasks:', error);
-        } finally {
-          // Wait a bit longer to ensure state updates are complete
-          setTimeout(() => {
-            setIsLoadingFromDatabase(false);
-          }, 500);
-        }
-      }, 500); // Wait 500ms before reloading
-    };
-    
-    const channel = supabase
-      .channel('tasks-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `user_id=eq.${user.id}`,
-        },
-        async (payload) => {
-          const newRecord = payload.new as { id?: string; title?: string; user_id?: string; completed?: boolean } | null;
-          const oldRecord = payload.old as { id?: string; user_id?: string } | null;
-          
-          console.log('[Real-time] Change detected:', {
-            eventType: payload.eventType,
-            table: payload.table,
-            new: newRecord ? {
-              id: newRecord.id,
-              title: newRecord.title,
-              user_id: newRecord.user_id,
-              completed: newRecord.completed,
-            } : null,
-            old: oldRecord ? {
-              id: oldRecord.id,
-              user_id: oldRecord.user_id,
-            } : null,
-          });
-          
-          // Check if the change is actually for this user
-          const changedUserId = newRecord?.user_id || oldRecord?.user_id;
-          if (changedUserId !== user.id) {
-            console.warn(`[Real-time] Change detected for different user: ${changedUserId} vs ${user.id}`);
-            return;
-          }
-          
-          // Skip reload if we're currently saving (to prevent loop)
-          if (isSavingRef.current) {
-            console.log('[Real-time] Skipping reload - currently saving');
-            return;
-          }
-          
-          // Debounced reload to avoid excessive queries
-          debouncedReload();
-        }
-      )
-      .subscribe((status) => {
-        console.log('[Real-time] Subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('[Real-time] Successfully subscribed to task changes');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('[Real-time] Channel error - real-time updates may not work');
-        }
-      });
-
-    return () => {
-      console.log('[Real-time] Cleaning up subscription');
-      if (reloadTimeout) {
-        clearTimeout(reloadTimeout);
-      }
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  // Reload tasks when page becomes visible (helps with mobile)
-  useEffect(() => {
-    if (!user) return;
-
-    let reloadTimeout: number | null = null;
-    let lastReloadTime = 0;
-    const RELOAD_DEBOUNCE_MS = 2000; // Only reload if last reload was more than 2 seconds ago
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const now = Date.now();
-        // Only reload if enough time has passed since last reload
-        if (now - lastReloadTime > RELOAD_DEBOUNCE_MS) {
-          // Clear any pending reload
-          if (reloadTimeout) {
-            clearTimeout(reloadTimeout);
-          }
-          // Debounce the reload slightly
-          reloadTimeout = window.setTimeout(() => {
-            console.log('[Visibility] Page became visible, reloading tasks...');
-            lastReloadTime = Date.now();
-            loadUserData(false); // Don't show notification for auto-refresh
-          }, 500); // Small delay to prevent rapid-fire reloads
-        }
-      }
-    };
-
-    const handleFocus = () => {
-      const now = Date.now();
-      // Only reload if enough time has passed since last reload
-      if (now - lastReloadTime > RELOAD_DEBOUNCE_MS) {
-        // Clear any pending reload
-        if (reloadTimeout) {
-          clearTimeout(reloadTimeout);
-        }
-        // Debounce the reload slightly
-        reloadTimeout = window.setTimeout(() => {
-          console.log('[Focus] Window focused, reloading tasks...');
-          lastReloadTime = Date.now();
-          loadUserData(false); // Don't show notification for auto-refresh
-        }, 500); // Small delay to prevent rapid-fire reloads
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      if (reloadTimeout) {
-        clearTimeout(reloadTimeout);
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [user]);
-
-  const handleAuthSuccess = async () => {
-    // Reset to today view on successful auth
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    setTodayViewDate(today);
-    setCurrentView('today');
-    setSearchQuery('');
-    
-    // Scroll to top on successful auth
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    
-    // Add a small delay to ensure auth session is fully established
+  // Handle auth success
+  const handleAuthSuccess = useCallback(async () => {
+    resetToToday();
     setTimeout(() => {
       loadUserData();
     }, 300);
-  };
+  }, [resetToToday, loadUserData]);
 
-  const handleLogout = async () => {
+  // Handle logout
+  const handleLogout = useCallback(async () => {
     try {
-      await supabase.auth.signOut();
-      // The auth state change listener will handle clearing the user state
+      await signOut();
     } catch (error) {
-      console.error('Failed to sign out:', error);
+      logger.error('Failed to sign out:', error);
     }
-  };
+  }, [signOut]);
 
-  const normalizeTags = (tags: string[]): string[] => {
-    return tags.map(tag => tag.toLowerCase());
-  };
-
-  const addTask = (taskData: Partial<Task>) => {
-    const recurrenceGroupId = taskData.recurrence ? generateId() : null;
-    const dueDate = taskData.dueDate || null;
-    const normalizedTags = normalizeTags(taskData.tags || []);
-    
-    const newTasks: Task[] = [];
-    
-    if (taskData.recurrence && dueDate) {
-      // Generate all recurring occurrences (exactly 50 instances)
-      const multiplier = taskData.recurrence === 'custom' ? (taskData.recurrenceMultiplier ?? 1) : 1;
-      const customFreq = taskData.recurrence === 'custom' ? taskData.customFrequency : undefined;
-      const recurringDates = generateRecurringDates(
-        dueDate, 
-        taskData.recurrence, 
-        50,
-        multiplier,
-        customFreq
-      );
-      console.log(`[Recurring Task] Creating ${recurringDates.length} occurrences for "${taskData.title}" with ${taskData.recurrence} recurrence starting ${dueDate}`);
-      
-      recurringDates.forEach((date, index) => {
-        const isLastInstance = index === recurringDates.length - 1;
-        newTasks.push({
-          id: generateId(),
-          title: taskData.title || '',
-          dueDate: date,
-          completed: false,
-          subtasks: index === 0 ? (taskData.subtasks || []) : (taskData.subtasks || []).map(st => ({ ...st, completed: false })),
-          tags: normalizedTags,
-          createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString(),
-          recurrence: (taskData.recurrence as RecurrenceType) || null,
-          recurrenceGroupId,
-          recurrenceMultiplier: taskData.recurrence === 'custom' ? multiplier : undefined,
-          customFrequency: taskData.recurrence === 'custom' ? customFreq : undefined,
-          isLastInstance,
-          autoRenew: true, // Always enable auto-renewal for recurring tasks
-        });
-      });
-    } else if (taskData.recurrence && !dueDate) {
-      console.warn(`[Recurring Task] Cannot create recurring task "${taskData.title}" without a due date`);
+  // Combined add task function (handles both recurring and non-recurring)
+  const addTask = useCallback((taskData: Partial<Task>) => {
+    if (taskData.recurrence && taskData.dueDate) {
+      addRecurringTask(taskData);
     } else {
-      // Single non-recurring task
-      newTasks.push({
-        id: generateId(),
-        title: taskData.title || '',
-        dueDate,
-        completed: false,
-        subtasks: taskData.subtasks || [],
-        tags: normalizedTags,
-        createdAt: new Date().toISOString(),
-        lastModified: new Date().toISOString(),
-        recurrence: null,
-        recurrenceGroupId: null,
-      });
-      console.log(`[Recurring Task] Created ${newTasks.length} tasks. First: ${newTasks[0]?.dueDate}, Last: ${newTasks[newTasks.length - 1]?.dueDate}`);
+      addTaskBase(taskData);
     }
-    
-    console.log(`[Add Task] Adding ${newTasks.length} task(s) to the list. Total tasks will be: ${tasks.length + newTasks.length}`);
-    setTasks([...tasks, ...newTasks]);
     setShowTaskForm(false);
     setEditingTask(null);
-  };
+  }, [addRecurringTask, addTaskBase]);
 
-  const updateTask = (id: string, updates: Partial<Task>) => {
+  // Combined update task function (handles both recurring and non-recurring)
+  const updateTask = useCallback((id: string, updates: Partial<Task>) => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
 
-    // Check if recurrence settings are being changed
-    const recurrenceChanged = updates.recurrence !== undefined && updates.recurrence !== existingTask.recurrence;
-    const multiplierChanged = updates.recurrenceMultiplier !== undefined && updates.recurrenceMultiplier !== existingTask.recurrenceMultiplier;
-    const customFreqChanged = updates.customFrequency !== undefined && updates.customFrequency !== existingTask.customFrequency;
-    const recurrenceSettingsChanged = recurrenceChanged || multiplierChanged || customFreqChanged;
-    
-    // Check if this is the first instance in the recurrence group (earliest due date)
-    const isFirstInstance = existingTask.recurrenceGroupId ? (() => {
-      const groupTasks = tasks.filter(t => t.recurrenceGroupId === existingTask.recurrenceGroupId);
-      if (groupTasks.length === 0) return true;
-      const earliestTask = groupTasks.reduce((earliest, current) => {
-        if (!earliest.dueDate) return current;
-        if (!current.dueDate) return earliest;
-        return new Date(current.dueDate) < new Date(earliest.dueDate) ? current : earliest;
-      });
-      return earliestTask.id === existingTask.id;
-    })() : true;
-    
-    const dueDateChanged = updates.dueDate !== undefined && updates.dueDate !== existingTask.dueDate;
-    const isDragDrop = (updates as any)._dragDrop === true;
-    
-    // Only regenerate if recurrence settings changed OR if editing the first instance's due date
-    // BUT: Skip regeneration if this is a drag-and-drop operation (just update the single instance)
-    if (!isDragDrop && recurrenceSettingsChanged && (updates.recurrence || existingTask.recurrence) && (updates.dueDate || existingTask.dueDate)) {
-      // Delete old recurring group if it exists
-      let tasksToRemove: Task[] = [];
-      if (existingTask.recurrenceGroupId) {
-        // When recurrence frequency changes, delete ALL instances from the old pattern
-        // except completed past instances (keep those as historical records)
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        tasksToRemove = tasks.filter(task => {
-          // Only consider tasks from the same recurrence group
-          if (task.recurrenceGroupId !== existingTask.recurrenceGroupId) return false;
-          
-          // Must have a due date to compare
-          if (!task.dueDate) return false;
-          
-          const taskDate = new Date(task.dueDate);
-          taskDate.setHours(0, 0, 0, 0);
-          
-          // Delete all future instances (including today, regardless of completion)
-          if (taskDate >= today) return true;
-          
-          // Delete incomplete overdue instances
-          if (!task.completed && taskDate < today) return true;
-          
-          // Keep completed past instances
-          return false;
-        });
-      } else {
-        tasksToRemove = [existingTask];
-      }
-      
-      const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
-      const remainingTasks = tasks.filter(task => !taskIdsToRemove.has(task.id));
-      
-      // Create new recurring occurrences
-      const recurrenceGroupId = generateId();
-      const dueDate = updates.dueDate || existingTask.dueDate;
-      const multiplier = updates.recurrence === 'custom' ? (updates.recurrenceMultiplier ?? existingTask.recurrenceMultiplier ?? 1) : 1;
-      const customFreq = updates.recurrence === 'custom' ? (updates.customFrequency || existingTask.customFrequency) : undefined;
-      const recurringDates = generateRecurringDates(dueDate!, updates.recurrence || existingTask.recurrence!, 50, multiplier, customFreq);
-      
-      const normalizedTags = normalizeTags(updates.tags || existingTask.tags);
-      const newTasks: Task[] = recurringDates.map((date, index) => {
-        const isLastInstance = index === recurringDates.length - 1;
-        return {
-          id: generateId(),
-          title: updates.title || existingTask.title,
-          dueDate: date,
-          completed: false,
-          subtasks: index === 0 ? (updates.subtasks || existingTask.subtasks) : (updates.subtasks || existingTask.subtasks || []).map(st => ({ ...st, completed: false })),
-          tags: normalizedTags,
-          createdAt: existingTask.createdAt,
-          lastModified: new Date().toISOString(),
-          recurrence: updates.recurrence || existingTask.recurrence || null,
-          recurrenceGroupId,
-          recurrenceMultiplier: updates.recurrence === 'custom' ? multiplier : undefined,
-          customFrequency: updates.recurrence === 'custom' ? customFreq : undefined,
-          isLastInstance,
-          autoRenew: true, // Always enable auto-renewal for recurring tasks
-        };
-      });
-      
-      setTasks([...remainingTasks, ...newTasks]);
-    } else if (!isDragDrop && dueDateChanged && existingTask.recurrence && existingTask.recurrenceGroupId && updates.dueDate && isFirstInstance) {
-      // Only regenerate if editing the FIRST instance's due date
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tasksToRemove = tasks.filter(task => {
-        if (task.recurrenceGroupId !== existingTask.recurrenceGroupId) return false;
-        const taskDate = new Date(task.dueDate!);
-        taskDate.setHours(0, 0, 0, 0);
-        return taskDate >= today || (!task.completed && taskDate < today);
-      });
-      const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
-      const remainingTasks = tasks.filter(task => !taskIdsToRemove.has(task.id));
-      
-      const multiplier = existingTask.recurrence === 'custom' ? (existingTask.recurrenceMultiplier ?? 1) : 1;
-      const customFreq = existingTask.recurrence === 'custom' ? existingTask.customFrequency : undefined;
-      const recurringDates = generateRecurringDates(updates.dueDate, existingTask.recurrence, 50, multiplier, customFreq);
-      const normalizedTags = normalizeTags(updates.tags || existingTask.tags);
-      const newTasks: Task[] = recurringDates.map((date, index) => {
-        const isLastInstance = index === recurringDates.length - 1;
-        return {
-          id: generateId(),
-          title: updates.title || existingTask.title,
-          dueDate: date,
-          completed: false,
-          subtasks: index === 0 ? (updates.subtasks || existingTask.subtasks) : (updates.subtasks || existingTask.subtasks || []).map(st => ({ ...st, completed: false })),
-          tags: normalizedTags,
-          createdAt: existingTask.createdAt,
-          lastModified: new Date().toISOString(),
-          recurrence: existingTask.recurrence,
-          recurrenceGroupId: existingTask.recurrenceGroupId,
-          recurrenceMultiplier: existingTask.recurrenceMultiplier,
-          customFrequency: existingTask.customFrequency,
-          isLastInstance,
-          autoRenew: true, // Always enable auto-renewal for recurring tasks
-        };
-      });
-      
-      setTasks([...remainingTasks, ...newTasks]);
+    if (existingTask.recurrence || updates.recurrence) {
+      updateRecurringTask(id, updates);
     } else {
-      // Regular update - check if this is a recurring task that should propagate updates
-      if (existingTask.recurrenceGroupId && !isDragDrop) {
-        // For recurring tasks, propagate title, tags, and optionally subtasks to future instances
-        // Due dates are independent per instance
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
-        
-        // Check if subtasks changed and should be propagated (user confirmed in prompt)
-        const subtasksChanged = updates.subtasks !== undefined && 
-          JSON.stringify(updates.subtasks) !== JSON.stringify(existingTask.subtasks);
-        const skipSubtaskPropagation = (updates as any)._skipSubtaskPropagation === true;
-        
-        // Extract fields that should propagate (title, tags, and subtasks if user confirmed)
-        const propagatingUpdates: Partial<Task> = {};
-        if (updates.title !== undefined) {
-          propagatingUpdates.title = updates.title;
-        }
-        if (normalizedTags) {
-          propagatingUpdates.tags = normalizedTags;
-        }
-        // Only propagate subtasks if they changed AND user confirmed (not skipped)
-        if (subtasksChanged && updates.subtasks && !skipSubtaskPropagation) {
-          propagatingUpdates.subtasks = updates.subtasks.map(st => ({ ...st, completed: false }));
-        }
-        
-        setTasks(tasks.map(task => {
-          if (task.id === id) {
-            // Update the specific task being edited with all updates
-            // Remove the _dragDrop flag before saving (if present)
-            const { _dragDrop, ...cleanUpdates } = updates as any;
-            const updatedTask = { ...task, ...cleanUpdates, lastModified: new Date().toISOString() };
-            if (normalizedTags) {
-              updatedTask.tags = normalizedTags;
-            }
-            return updatedTask;
-          } else if (task.recurrenceGroupId === existingTask.recurrenceGroupId) {
-            // For other instances in the group, propagate title, tags, and subtasks (if user confirmed)
-            const taskDate = new Date(task.dueDate!);
-            taskDate.setHours(0, 0, 0, 0);
-            const isFuture = taskDate >= today || (!task.completed && taskDate < today);
-            
-            if (isFuture && Object.keys(propagatingUpdates).length > 0) {
-              const updatedTask = { ...task, ...propagatingUpdates, lastModified: new Date().toISOString() };
-              return updatedTask;
-            }
-          }
-          return task;
-        }));
-      } else {
-        // Regular update - just update the single task
-        // For drag-and-drop or non-recurring tasks, always update just this instance
-        const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
-        setTasks(tasks.map(task => {
-          if (task.id === id) {
-            // Remove the _dragDrop flag before saving (if present)
-            const { _dragDrop, ...cleanUpdates } = updates as any;
-            const updatedTask = { ...task, ...cleanUpdates, lastModified: new Date().toISOString() };
-            if (normalizedTags) {
-              updatedTask.tags = normalizedTags;
-            }
-            return updatedTask;
-          }
-          return task;
-        }));
-      }
+      updateTaskBase(id, updates);
     }
-  };
+  }, [tasks, updateRecurringTask, updateTaskBase]);
 
-  const performDelete = async (tasksToDelete: Task[], taskToDelete: Task) => {
-    // Clear any existing undo timeout
-    if (deletedTask) {
-      clearTimeout(deletedTask.timeoutId);
-    }
-
-    // Capture original tasks before modification for error recovery
-    const originalTasks = tasks;
-
-    // Remove tasks from list
-    const taskIdsToDelete = new Set(tasksToDelete.map(t => t.id));
-    const remainingTasks = tasks.filter(task => !taskIdsToDelete.has(task.id));
-    setTasks(remainingTasks);
-
-    // Delete from database
-    try {
-      await deleteTasksFromDatabase(Array.from(taskIdsToDelete));
-      console.log(`[deleteTask] Successfully deleted ${taskIdsToDelete.size} task(s) from database`);
-    } catch (error) {
-      console.error('[deleteTask] Failed to delete tasks from database:', error);
-      // Restore original tasks if database delete failed
-      setTasks(originalTasks);
-      return;
-    }
-
-    // Set up undo with 3 second timeout (store all deleted tasks)
-    const timeoutId = window.setTimeout(() => {
-      setDeletedTask(null);
-    }, 3000) as unknown as number;
-
-    setDeletedTask({ task: taskToDelete, tasks: tasksToDelete, timeoutId });
-  };
-
-  const deleteTask = async (id: string) => {
+  // Delete task handler
+  const deleteTask = useCallback(async (id: string) => {
     const taskToDelete = tasks.find(task => task.id === id);
     if (!taskToDelete) return;
 
@@ -941,10 +149,10 @@ function App() {
 
     // For non-recurring tasks, delete immediately
     await performDelete([taskToDelete], taskToDelete);
-  };
+  }, [tasks, performDelete]);
 
-  const deleteGroup = async (groupId: string) => {
-    // Get all tasks in this recurrence group
+  // Delete group handler
+  const deleteGroup = useCallback(async (groupId: string) => {
     const groupTasks = tasks.filter(task => task.recurrenceGroupId === groupId);
     if (groupTasks.length === 0) return;
 
@@ -959,142 +167,42 @@ function App() {
     if (confirmed) {
       await performDelete(incompleteTasks, representativeTask);
     }
-  };
+  }, [tasks, performDelete]);
 
-  const deleteFutureOccurrences = async () => {
+  // Delete future occurrences
+  const deleteFutureOccurrences = useCallback(async () => {
     if (!pendingDeleteTask || !pendingDeleteTask.dueDate) return;
 
-    // Get the selected task's due date as a string in 'yyyy-MM-dd' format for comparison
     const selectedTaskDateStr = pendingDeleteTask.dueDate.split('T')[0];
     
     const tasksToDelete = tasks.filter(task => {
       if (task.recurrenceGroupId !== pendingDeleteTask.recurrenceGroupId) return false;
       if (!task.dueDate) return false;
-      // Never delete completed tasks - they are historical records
       if (task.completed) return false;
       
-      // Extract date part from task.dueDate (handles both 'yyyy-MM-dd' and ISO strings)
       const taskDateStr = task.dueDate.split('T')[0];
-      
-      // Delete if >= selected task's due date - string comparison works for 'yyyy-MM-dd' format
       return taskDateStr >= selectedTaskDateStr;
     });
 
     setPendingDeleteTask(null);
     await performDelete(tasksToDelete, pendingDeleteTask);
-  };
+  }, [pendingDeleteTask, tasks, performDelete]);
 
-  const deleteOpenOccurrences = async () => {
+  // Delete open occurrences
+  const deleteOpenOccurrences = useCallback(async () => {
     if (!pendingDeleteTask) return;
 
     const tasksToDelete = tasks.filter(task => {
       if (task.recurrenceGroupId !== pendingDeleteTask.recurrenceGroupId) return false;
-      // Delete all incomplete tasks (regardless of date)
       return !task.completed;
     });
 
     setPendingDeleteTask(null);
     await performDelete(tasksToDelete, pendingDeleteTask);
-  };
+  }, [pendingDeleteTask, tasks, performDelete]);
 
-  const undoDelete = async () => {
-    if (deletedTask) {
-      clearTimeout(deletedTask.timeoutId);
-      // Restore all deleted tasks (including all occurrences if it was a recurring task)
-      const restoredTasks = [...tasks, ...deletedTask.tasks];
-      setTasks(restoredTasks);
-      
-      // Save restored tasks to database
-      try {
-        await saveTasks(restoredTasks);
-        console.log(`[undoDelete] Successfully restored ${deletedTask.tasks.length} task(s) to database`);
-      } catch (error) {
-        console.error('[undoDelete] Failed to restore tasks to database:', error);
-        // Revert local state if save failed
-        setTasks(tasks.filter(task => !deletedTask.tasks.some(dt => dt.id === task.id)));
-      }
-      
-      setDeletedTask(null);
-    }
-  };
-
-  const extendRecurringTask = (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task || !task.recurrence || !task.dueDate || !task.recurrenceGroupId) return;
-
-    // Find the last instance in the recurrence group (by due date)
-    const groupTasks = tasks.filter(t => t.recurrenceGroupId === task.recurrenceGroupId);
-    if (groupTasks.length === 0) return;
-    
-    // Find the task with the latest due date (compare dates properly)
-    const lastInstance = groupTasks.reduce((latest, current) => {
-      if (!latest.dueDate) return current;
-      if (!current.dueDate) return latest;
-      // Parse dates as local dates and compare
-      const latestDate = startOfDay(new Date(latest.dueDate + 'T00:00:00'));
-      const currentDate = startOfDay(new Date(current.dueDate + 'T00:00:00'));
-      return currentDate > latestDate ? current : latest;
-    });
-
-    if (!lastInstance.dueDate) return;
-
-    // Calculate next start date (day after last instance's due date)
-    // Parse the date string properly to avoid timezone issues
-    const lastDateStr = lastInstance.dueDate;
-    const [year, month, day] = lastDateStr.split('-').map(Number);
-    const lastDate = new Date(year, month - 1, day);
-    lastDate.setDate(lastDate.getDate() + 1);
-    const nextStartDate = formatDate(lastDate);
-    
-    // Generate next 50 instances
-    const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier ?? 1) : 1;
-    const customFreq = task.recurrence === 'custom' ? task.customFrequency : undefined;
-    const recurringDates = generateRecurringDates(
-      nextStartDate,
-      task.recurrence,
-      50,
-      multiplier,
-      customFreq
-    );
-    
-    const normalizedTags = normalizeTags(task.tags);
-    const newRecurrenceGroupId = task.recurrenceGroupId; // Keep same group ID
-    const newTasks: Task[] = recurringDates.map((date, index) => {
-      const isLastInstance = index === recurringDates.length - 1;
-      return {
-        id: generateId(),
-        title: task.title,
-        dueDate: date,
-        completed: false,
-        subtasks: task.subtasks.map(st => ({ ...st, completed: false })),
-        tags: normalizedTags,
-        createdAt: task.createdAt,
-        lastModified: new Date().toISOString(),
-        recurrence: task.recurrence,
-        recurrenceGroupId: newRecurrenceGroupId,
-        recurrenceMultiplier: task.recurrenceMultiplier,
-        customFrequency: task.customFrequency,
-        isLastInstance,
-        autoRenew: true, // Always enable auto-renewal for recurring tasks
-      };
-    });
-    
-    // Update the previous last instance to not be last anymore
-    const updatedTasks = tasks.map(t => 
-      t.id === lastInstance.id ? { ...t, isLastInstance: false } : t
-    );
-    
-    // Add new tasks
-    setTasks([...updatedTasks, ...newTasks]);
-    
-    // Show notification
-    setAutoRenewNotification({ taskTitle: task.title, count: 50 });
-    setTimeout(() => {
-      setAutoRenewNotification(null);
-    }, 5000);
-  };
-
-  const toggleTaskComplete = (id: string) => {
+  // Toggle task complete
+  const toggleTaskComplete = useCallback((id: string) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     
@@ -1110,213 +218,73 @@ function App() {
         );
         
         if (!confirmed) {
-          return; // User cancelled, don't complete the task
+          return;
         }
         
-        // Complete the task and all subtasks
         const completedSubtasks = task.subtasks.map(st => ({ ...st, completed: true }));
         const previousState = { ...task };
         updateTask(id, { completed: true, subtasks: completedSubtasks });
         
-        // Set up undo notification
         setCompletedTask({ task: { ...task, completed: true, subtasks: completedSubtasks }, previousState });
         return;
       }
     }
     
-    // Normal toggle (no incomplete subtasks or uncompleting)
+    // Normal toggle
     if (newCompletedState) {
-      // Task is being completed - save previous state for undo
       const previousState = { ...task };
       updateTask(id, { completed: true });
       setCompletedTask({ task: { ...task, completed: true }, previousState });
       
-      // Check if this is the last instance with auto-renew enabled
-      if (task.isLastInstance && task.autoRenew && task.recurrence && task.dueDate && task.recurrenceGroupId) {
-        // Calculate next start date (day after current due date)
-        const currentDate = new Date(task.dueDate);
-        currentDate.setDate(currentDate.getDate() + 1);
-        const nextStartDate = formatDate(currentDate);
-        
-        // Generate next 50 instances
-        const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier ?? 1) : 1;
-        const customFreq = task.recurrence === 'custom' ? task.customFrequency : undefined;
-        const recurringDates = generateRecurringDates(
-          nextStartDate,
-          task.recurrence,
-          50,
-          multiplier,
-          customFreq
-        );
-        
-        const normalizedTags = normalizeTags(task.tags);
-        const newRecurrenceGroupId = generateId();
-        const newTasks: Task[] = recurringDates.map((date, index) => {
-          const isLastInstance = index === recurringDates.length - 1;
-          return {
-            id: generateId(),
-            title: task.title,
-            dueDate: date,
-            completed: false,
-            subtasks: task.subtasks.map(st => ({ ...st, completed: false })),
-            tags: normalizedTags,
-            createdAt: task.createdAt,
-            lastModified: new Date().toISOString(),
-            recurrence: task.recurrence,
-            recurrenceGroupId: newRecurrenceGroupId,
-            recurrenceMultiplier: task.recurrenceMultiplier,
-            customFrequency: task.customFrequency,
-            isLastInstance,
-            autoRenew: true,
-          };
-        });
-        
-        // Add new tasks
-        setTasks(currentTasks => [...currentTasks, ...newTasks]);
-        
-        // Show notification
-        setAutoRenewNotification({ taskTitle: task.title, count: 50 });
-        setTimeout(() => {
-          setAutoRenewNotification(null);
-        }, 5000);
-      }
+      // Handle auto-renewal if this is the last instance
+      handleAutoRenewal(task);
     } else {
-      // Task is being uncompleted - clear any undo notification
       setCompletedTask(null);
       updateTask(id, { completed: false });
     }
-  };
+  }, [tasks, updateTask, handleAutoRenewal]);
 
-  const undoCompletion = () => {
-    if (completedTask) {
-      // Restore the task to its previous state
-      const taskToRestore = completedTask.previousState;
-      updateTask(taskToRestore.id, {
-        completed: taskToRestore.completed,
-        subtasks: taskToRestore.subtasks
-      });
-      setCompletedTask(null);
-    }
-  };
-
-  const handleEdit = (task: Task) => {
+  // Edit handler
+  const handleEdit = useCallback((task: Task) => {
     setEditingTask(task);
     setInitialDueDate(null);
     setShowTaskForm(true);
-  };
+  }, []);
 
-  const handleAddTask = (date: Date) => {
+  // Add task handler
+  const handleAddTask = useCallback((date: Date) => {
     setEditingTask(null);
     setInitialDueDate(formatDate(date));
     setShowTaskForm(true);
-  };
+  }, []);
 
-  const getTodayTasks = (date?: Date) => {
-    const targetDate = date || todayViewDate;
-    const dateStr = formatDate(targetDate);
-    const isToday = isDateToday(formatDate(new Date()));
-    
-    return tasks.filter(task => {
-      if (task.completed) return false;
-      if (!task.dueDate) return false;
-      
-      if (isToday) {
-        // For actual today, include tasks due today OR overdue tasks (carryover)
-        return isDateToday(task.dueDate) || isDateOverdue(task.dueDate);
-      } else {
-        // For other dates, only include tasks due on that exact date
-        const taskDateStr = task.dueDate.split('T')[0];
-        return taskDateStr === dateStr;
-      }
-    }).sort((a, b) => {
-      // Sort by overdue status only if viewing today
-      if (isToday) {
-        const aIsOverdue = isDateOverdue(a.dueDate);
-        const bIsOverdue = isDateOverdue(b.dueDate);
-        
-        if (aIsOverdue && !bIsOverdue) return 1; // a is overdue, b is today - put a after b
-        if (!aIsOverdue && bIsOverdue) return -1; // a is today, b is overdue - put a before b
-      }
-      return 0; // Both same status, keep original order
-    });
-  };
+  // Task filtering functions using utilities (memoized)
+  const getTodayTasksFiltered = useMemo(() => {
+    return (date?: Date) => getTodayTasks(tasks, date || todayViewDate, isDateToday, isDateOverdue, formatDate);
+  }, [tasks, todayViewDate]);
 
-  const getTomorrowTasks = (date?: Date) => {
-    const targetDate = date || tomorrowViewDate;
-    const dateStr = formatDate(targetDate);
-    const isTomorrow = isDateTomorrow(formatDate(new Date()));
-    
-    return tasks.filter(task => {
-      if (task.completed) return false;
-      if (!task.dueDate) return false;
-      
-      if (isTomorrow) {
-        // For actual tomorrow, use the tomorrow check
-        return isDateTomorrow(task.dueDate);
-      } else {
-        // For other dates, only include tasks due on that exact date
-        const taskDateStr = task.dueDate.split('T')[0];
-        return taskDateStr === dateStr;
-      }
-    });
-  };
+  const getTomorrowTasksFiltered = useMemo(() => {
+    return (date?: Date) => getTomorrowTasks(tasks, date || tomorrowViewDate, isDateTomorrow, formatDate);
+  }, [tasks, tomorrowViewDate]);
 
-  const getDayTasks = (date: Date) => {
-    // Get tasks for a specific date (without overdue tasks)
-    const dateStr = formatDate(date);
-    return tasks.filter(task => {
-      if (task.completed) return false;
-      if (!task.dueDate) return false;
-      // Only include tasks due on this exact date, not overdue
-      const taskDateStr = task.dueDate.split('T')[0];
-      return taskDateStr === dateStr;
-    });
-  };
+  const getDayTasksFiltered = useMemo(() => {
+    return (date: Date) => getDayTasks(tasks, date, formatDate);
+  }, [tasks]);
 
-  const getWeekTasks = () => {
-    // Return all incomplete tasks with due dates - WeekView will filter by the selected week
-    return tasks.filter(task => {
-      if (task.completed) return false;
-      return task.dueDate !== null;
-    });
-  };
+  const getWeekTasksFiltered = useMemo(() => {
+    return () => getWeekTasks(tasks);
+  }, [tasks]);
 
-  const getCompletedTasks = () => {
-    return tasks.filter(task => task.completed);
-  };
+  const getCompletedTasksFiltered = useMemo(() => {
+    return () => getCompletedTasks(tasks);
+  }, [tasks]);
 
-  const filterTasksBySearch = (taskList: Task[], query: string): Task[] => {
-    if (!query.trim()) return taskList;
-    
-    const lowerQuery = query.toLowerCase().trim();
-    
-    return taskList.filter(task => {
-      // Search in title
-      if (task.title.toLowerCase().includes(lowerQuery)) return true;
-      
-      // Search in tags - check for exact match first, then substring match
-      // Tags are stored in lowercase, so we can compare directly
-      if (task.tags.some(tag => {
-        const normalizedTag = tag.toLowerCase();
-        // Exact match (case-insensitive)
-        if (normalizedTag === lowerQuery) return true;
-        // Substring match for flexibility
-        if (normalizedTag.includes(lowerQuery)) return true;
-        return false;
-      })) return true;
-      
-      // Search in subtasks
-      if (task.subtasks.some(subtask => subtask.text.toLowerCase().includes(lowerQuery))) return true;
-      
-      return false;
-    });
-  };
-
+  // Render view
   const renderView = () => {
     switch (currentView) {
       case 'today':
         return <TodayView 
-          tasks={filterTasksBySearch(getTodayTasks(todayViewDate), searchQuery)} 
+          tasks={filterTasksBySearch(getTodayTasksFiltered(todayViewDate), searchQuery)} 
           date={todayViewDate}
           tagColors={tagColors}
           onToggleComplete={toggleTaskComplete} 
@@ -1328,7 +296,7 @@ function App() {
         />;
       case 'tomorrow':
         return <TomorrowView 
-          tasks={filterTasksBySearch(getTomorrowTasks(tomorrowViewDate), searchQuery)} 
+          tasks={filterTasksBySearch(getTomorrowTasksFiltered(tomorrowViewDate), searchQuery)} 
           date={tomorrowViewDate}
           tagColors={tagColors}
           onToggleComplete={toggleTaskComplete} 
@@ -1341,7 +309,7 @@ function App() {
       case 'day':
         if (!selectedDayDate) return null;
         return <DayView 
-          tasks={filterTasksBySearch(getDayTasks(selectedDayDate), searchQuery)} 
+          tasks={filterTasksBySearch(getDayTasksFiltered(selectedDayDate), searchQuery)} 
           date={selectedDayDate}
           tagColors={tagColors}
           onToggleComplete={toggleTaskComplete} 
@@ -1354,7 +322,7 @@ function App() {
         />;
       case 'week':
         return <WeekView 
-          tasks={getWeekTasks()} 
+          tasks={getWeekTasksFiltered()} 
           initialWeekDate={weekViewDate}
           tagColors={tagColors}
           onToggleComplete={toggleTaskComplete} 
@@ -1375,7 +343,7 @@ function App() {
         />;
       case 'completed':
         return <CompletedView 
-          tasks={filterTasksBySearch(getCompletedTasks(), searchQuery)} 
+          tasks={filterTasksBySearch(getCompletedTasksFiltered(), searchQuery)} 
           tagColors={tagColors}
           onToggleComplete={toggleTaskComplete} 
           onEdit={handleEdit} 
@@ -1457,12 +425,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
         <div className="app-header-top">
           <h1 
             onClick={() => {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              setTodayViewDate(today);
-              setCurrentView('today');
-              setSearchQuery('');
-              // Scroll handled by useEffect watching currentView
+              resetToToday();
             }}
           >
             💩 Poop Task
@@ -1539,12 +502,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
           <button 
             className={currentView === 'today' ? 'active' : ''} 
             onClick={() => { 
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              setTodayViewDate(today);
-              setCurrentView('today'); 
-              setSearchQuery('');
-              // Scroll handled by useEffect watching currentView
+              resetToToday();
             }}
           >
             Today
@@ -1650,7 +608,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
       {completedTask && (
         <CompletionUndoNotification
           taskTitle={completedTask.task.title}
-          onUndo={undoCompletion}
+          onUndo={() => undoCompletion(updateTask)}
           onDismiss={() => setCompletedTask(null)}
         />
       )}
@@ -1693,12 +651,10 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
             await saveTasks(updatedTasks);
           }}
           onTagColorsChange={(updatedColors) => {
-            // Update tag colors immediately when changed in TagManager
             setTagColors(updatedColors);
           }}
           onClose={async () => {
             setShowTagManager(false);
-            // Reload tag colors when TagManager closes to ensure we have the latest
             const updatedColors = await loadTagColors();
             setTagColors(updatedColors);
           }}

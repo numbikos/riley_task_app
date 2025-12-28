@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getTagColor, DEFAULT_TAG_COLORS } from '../types';
 import { loadTags, saveTags, loadTagColors, saveTagColors, deleteTagColor } from '../utils/supabaseStorage';
+import { logger } from '../utils/logger';
 
 interface TagManagerProps {
   tasks: any[];
@@ -23,14 +24,14 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
         setAvailableTags(tags.sort());
       })
       .catch(error => {
-        console.error('[TagManager] Failed to load tags:', error);
+        logger.error('[TagManager] Failed to load tags:', error);
         setAvailableTags([]);
       });
     // Load stored tag colors
     loadTagColors()
       .then(setTagColors)
       .catch(error => {
-        console.error('[TagManager] Failed to load tag colors:', error);
+        logger.error('[TagManager] Failed to load tag colors:', error);
         setTagColors({});
       });
   }, []);
@@ -49,12 +50,12 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
     }));
 
     // Delete tag color from database
-    await deleteTagColor(tagToDelete).catch(console.error);
+    await deleteTagColor(tagToDelete).catch((error) => logger.error('[TagManager] Failed to delete tag color:', error));
 
     // Update available tags
     const updatedTags = availableTags.filter(tag => tag.toLowerCase() !== tagToDelete.toLowerCase());
     setAvailableTags(updatedTags);
-    saveTags(updatedTags).catch(console.error);
+    saveTags(updatedTags).catch((error) => logger.error('[TagManager] Failed to save tags:', error));
 
     // Update tag colors state
     const normalizedTag = tagToDelete.toLowerCase();
@@ -146,7 +147,7 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
       setNewTagInput('');
       setShowAddTagForm(false);
     } catch (error) {
-      console.error('[TagManager] Failed to add tag:', error);
+      logger.error('[TagManager] Failed to add tag:', error);
       alert(`Failed to add tag: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };

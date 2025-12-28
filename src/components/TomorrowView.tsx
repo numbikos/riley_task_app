@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Task, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { formatDate, formatFullDate } from '../utils/dateUtils';
@@ -33,7 +33,10 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
   };
 
   const fullDateDisplay = formatFullDate(date);
-  const isTomorrow = formatDate(date) === formatDate(new Date(Date.now() + 86400000));
+  const isTomorrow = useMemo(() => formatDate(date) === formatDate(new Date(Date.now() + 86400000)), [date]);
+
+  // Memoize grouped tasks
+  const { grouped, sortedTags } = useMemo(() => groupTasksByTag(tasks), [tasks]);
 
   if (tasks.length === 0) {
     return (
@@ -73,8 +76,6 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
       return newSet;
     });
   };
-
-  const { grouped, sortedTags } = groupTasksByTag(tasks);
 
   return (
     <div>

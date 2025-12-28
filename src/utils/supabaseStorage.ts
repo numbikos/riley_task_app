@@ -1,5 +1,6 @@
 import { Task } from '../types';
 import { supabase } from './supabase';
+import { logger } from './logger';
 
 // Database task type (snake_case for Supabase)
 interface DatabaseTask {
@@ -83,7 +84,7 @@ const toDateOnly = (dateString: string | null | undefined): string | null => {
 };
 
 // Convert app task to database format
-const taskToDbTask = (task: Task, userId: string, idMap?: Map<string, string>): Omit<DatabaseTask, 'created_at' | 'last_modified'> => {
+const taskToDbTask = (task: Task, userId: string, idMap?: Map<string, string>): Omit<DatabaseTask, 'created_at'> => {
   return {
     id: toUUID(task.id, idMap)!,
     user_id: userId,
@@ -98,6 +99,7 @@ const taskToDbTask = (task: Task, userId: string, idMap?: Map<string, string>): 
     custom_frequency: task.customFrequency || null,
     is_last_instance: task.isLastInstance || false,
     auto_renew: task.autoRenew || false,
+    last_modified: task.lastModified, // Include lastModified so database trigger doesn't override it
   };
 };
 
@@ -105,26 +107,26 @@ export const loadTasks = async (): Promise<Task[]> => {
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError) {
-      console.error('[loadTasks] Auth error:', authError);
+      logger.error('[loadTasks] Auth error:', authError);
       return [];
     }
     if (!user) {
-      console.log('[loadTasks] No user authenticated');
+      logger.debug('[loadTasks] No user authenticated');
       return [];
     }
 
-    console.log(`[loadTasks] Fetching tasks for user: ${user.id}`);
-    console.log(`[loadTasks] User email: ${user.email}`);
+    logger.debug(`[loadTasks] Fetching tasks for user: ${user.id}`);
+    logger.debug(`[loadTasks] User email: ${user.email}`);
     
     // Check session to verify auth context
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
-      console.error('[loadTasks] Session error:', sessionError);
+      logger.error('[loadTasks] Session error:', sessionError);
     } else {
-      console.log(`[loadTasks] Session exists: ${!!session}`);
-      console.log(`[loadTasks] Session user ID: ${session?.user?.id}`);
+      logger.debug(`[loadTasks] Session exists: ${!!session}`);
+      logger.debug(`[loadTasks] Session user ID: ${session?.user?.id}`);
       if (session?.user?.id !== user.id) {
-        console.warn('[loadTasks] WARNING: Session user ID does not match getUser() user ID!');
+        logger.warn('[loadTasks] WARNING: Session user ID does not match getUser() user ID!');
       }
     }
     
@@ -136,17 +138,17 @@ export const loadTasks = async (): Promise<Task[]> => {
       .limit(10);
     
     if (allTasksError) {
-      console.warn('[loadTasks] Could not check all tasks:', allTasksError);
-      console.warn('[loadTasks] Error details:', {
+      logger.warn('[loadTasks] Could not check all tasks:', allTasksError);
+      logger.warn('[loadTasks] Error details:', {
         message: allTasksError.message,
         details: allTasksError.details,
         hint: allTasksError.hint,
         code: allTasksError.code,
       });
     } else {
-      console.log(`[loadTasks] Total tasks visible to current user (RLS filtered): ${allTasksData?.length || 0}`);
+      logger.debug(`[loadTasks] Total tasks visible to current user (RLS filtered): ${allTasksData?.length || 0}`);
       if (allTasksData && allTasksData.length > 0) {
-        console.log('[loadTasks] Sample tasks from database:', allTasksData.map((t: any) => ({
+        logger.debug('[loadTasks] Sample tasks from database:', allTasksData.map((t: any) => ({
           id: t.id,
           title: t.title,
           user_id: t.user_id,
@@ -155,10 +157,10 @@ export const loadTasks = async (): Promise<Task[]> => {
           matches_current_user: t.user_id === user.id,
         })));
       } else {
-        console.warn('[loadTasks] No tasks visible through RLS. This suggests:');
-        console.warn('  - Either no tasks exist for this user');
-        console.warn('  - Or RLS policies are blocking access');
-        console.warn('  - Check Supabase dashboard: Authentication > Policies to verify RLS is set up correctly');
+        logger.warn('[loadTasks] No tasks visible through RLS. This suggests:');
+        logger.warn('  - Either no tasks exist for this user');
+        logger.warn('  - Or RLS policies are blocking access');
+        logger.warn('  - Check Supabase dashboard: Authentication > Policies to verify RLS is set up correctly');
       }
     }
     
@@ -169,8 +171,8 @@ export const loadTasks = async (): Promise<Task[]> => {
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('[loadTasks] Failed to load tasks:', error);
-      console.error('[loadTasks] Error details:', {
+      logger.error('[loadTasks] Failed to load tasks:', error);
+      logger.error('[loadTasks] Error details:', {
         message: error.message,
         details: error.details,
         hint: error.hint,
@@ -179,23 +181,23 @@ export const loadTasks = async (): Promise<Task[]> => {
       
       // Check if it's an RLS policy error
       if (error.code === '42501' || error.message.includes('permission') || error.message.includes('policy')) {
-        console.error('[loadTasks] RLS POLICY ERROR: Row Level Security is blocking access!');
-        console.error('[loadTasks] Please check your Supabase RLS policies in the dashboard.');
+        logger.error('[loadTasks] RLS POLICY ERROR: Row Level Security is blocking access!');
+        logger.error('[loadTasks] Please check your Supabase RLS policies in the dashboard.');
       }
       
       return [];
     }
 
     if (!data) {
-      console.log('[loadTasks] No data returned from query');
+      logger.debug('[loadTasks] No data returned from query');
       return [];
     }
 
-    console.log(`[loadTasks] Retrieved ${data.length} tasks from database for user ${user.id}`);
+    logger.debug(`[loadTasks] Retrieved ${data.length} tasks from database for user ${user.id}`);
     
     // Log task details for debugging
     if (data.length > 0) {
-      console.log('[loadTasks] Sample tasks:', data.slice(0, 3).map((t: DatabaseTask) => ({
+      logger.debug('[loadTasks] Sample tasks:', data.slice(0, 3).map((t: DatabaseTask) => ({
         id: t.id,
         title: t.title,
         completed: t.completed,
@@ -203,12 +205,12 @@ export const loadTasks = async (): Promise<Task[]> => {
         user_id: t.user_id,
       })));
     } else {
-      console.warn(`[loadTasks] No tasks found for user ${user.id}. This could mean:`);
-      console.warn('  1. Tasks exist but belong to a different user_id');
-      console.warn('  2. RLS policies are blocking access');
-      console.warn('  3. The tasks table is empty');
-      console.warn(`[loadTasks] To debug: Check Supabase dashboard > Table Editor > tasks table`);
-      console.warn(`[loadTasks] Look for tasks with user_id = ${user.id}`);
+      logger.warn(`[loadTasks] No tasks found for user ${user.id}. This could mean:`);
+      logger.warn('  1. Tasks exist but belong to a different user_id');
+      logger.warn('  2. RLS policies are blocking access');
+      logger.warn('  3. The tasks table is empty');
+      logger.warn(`[loadTasks] To debug: Check Supabase dashboard > Table Editor > tasks table`);
+      logger.warn(`[loadTasks] Look for tasks with user_id = ${user.id}`);
     }
 
     // Migrate old tasks that don't have all fields
@@ -225,10 +227,10 @@ export const loadTasks = async (): Promise<Task[]> => {
       };
     });
 
-    console.log(`[loadTasks] Converted ${convertedTasks.length} tasks`);
+    logger.debug(`[loadTasks] Converted ${convertedTasks.length} tasks`);
     return convertedTasks;
   } catch (error) {
-    console.error('[loadTasks] Exception loading tasks:', error);
+    logger.error('[loadTasks] Exception loading tasks:', error);
     return [];
   }
 };
@@ -237,11 +239,11 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('[saveTasks] Cannot save tasks: user not authenticated');
+      logger.error('[saveTasks] Cannot save tasks: user not authenticated');
       return;
     }
 
-    console.log(`[saveTasks] Saving ${tasks.length} tasks for user ${user.id}`);
+    logger.debug(`[saveTasks] Saving ${tasks.length} tasks for user ${user.id}`);
     
     // DON'T delete all tasks when array is empty - this is too aggressive
     // Empty array might mean:
@@ -250,7 +252,7 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
     // 3. Race condition during reload
     // Instead, only save/upsert the tasks that exist
     if (tasks.length === 0) {
-      console.log('[saveTasks] Tasks array is empty - skipping save (not deleting existing tasks)');
+      logger.debug('[saveTasks] Tasks array is empty - skipping save (not deleting existing tasks)');
       return;
     }
 
@@ -292,8 +294,8 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
       });
 
     if (error) {
-      console.error('Failed to save tasks:', error);
-      console.error('Error details:', {
+      logger.error('Failed to save tasks:', error);
+      logger.error('Error details:', {
         message: error.message,
         details: error.details,
         hint: error.hint,
@@ -305,7 +307,7 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
     // Extract all unique tags from tasks and save tag colors if needed
     // (Tag colors are managed separately, but we ensure tags exist)
   } catch (error) {
-    console.error('Failed to save tasks:', error);
+    logger.error('Failed to save tasks:', error);
     throw error;
   }
 };
@@ -329,7 +331,7 @@ export const loadTags = async (): Promise<string[]> => {
         .eq('user_id', user.id);
       
       if (tagColorsError) {
-        console.error('[loadTags] Failed to load tags from tag_colors:', tagColorsError);
+        logger.error('[loadTags] Failed to load tags from tag_colors:', tagColorsError);
       } else if (tagColorsData) {
         tagColorsData.forEach((item: { tag: string }) => {
           allTags.add(item.tag.toLowerCase());
@@ -339,7 +341,7 @@ export const loadTags = async (): Promise<string[]> => {
     
     return Array.from(allTags);
   } catch (error) {
-    console.error('[loadTags] Exception loading tags:', error);
+    logger.error('[loadTags] Exception loading tags:', error);
     return [];
   }
 };
@@ -372,7 +374,7 @@ export const loadTagColors = async (): Promise<Record<string, string>> => {
       .eq('user_id', user.id);
 
     if (error) {
-      console.error('Failed to load tag colors:', error);
+      logger.error('Failed to load tag colors:', error);
       return {};
     }
 
@@ -385,7 +387,7 @@ export const loadTagColors = async (): Promise<Record<string, string>> => {
 
     return colors;
   } catch (error) {
-    console.error('Failed to load tag colors:', error);
+    logger.error('Failed to load tag colors:', error);
     return {};
   }
 };
@@ -394,7 +396,7 @@ export const saveTagColors = async (colors: Record<string, string>): Promise<voi
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('Cannot save tag colors: user not authenticated');
+      logger.error('Cannot save tag colors: user not authenticated');
       return;
     }
 
@@ -418,11 +420,11 @@ export const saveTagColors = async (colors: Record<string, string>): Promise<voi
       });
 
     if (error) {
-      console.error('Failed to save tag colors:', error);
+      logger.error('Failed to save tag colors:', error);
       throw error;
     }
   } catch (error) {
-    console.error('Failed to save tag colors:', error);
+    logger.error('Failed to save tag colors:', error);
     throw error;
   }
 };
@@ -431,7 +433,7 @@ export const deleteTagColor = async (tag: string): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('Cannot delete tag color: user not authenticated');
+      logger.error('Cannot delete tag color: user not authenticated');
       return;
     }
 
@@ -443,11 +445,11 @@ export const deleteTagColor = async (tag: string): Promise<void> => {
       .eq('tag', normalizedTag);
 
     if (error) {
-      console.error('Failed to delete tag color:', error);
+      logger.error('Failed to delete tag color:', error);
       throw error;
     }
   } catch (error) {
-    console.error('Failed to delete tag color:', error);
+    logger.error('Failed to delete tag color:', error);
     throw error;
   }
 };
@@ -457,7 +459,7 @@ export const deleteTask = async (taskId: string): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('Cannot delete task: user not authenticated');
+      logger.error('Cannot delete task: user not authenticated');
       return;
     }
 
@@ -468,11 +470,11 @@ export const deleteTask = async (taskId: string): Promise<void> => {
       .eq('user_id', user.id);
 
     if (error) {
-      console.error('Failed to delete task:', error);
+      logger.error('Failed to delete task:', error);
       throw error;
     }
   } catch (error) {
-    console.error('Failed to delete task:', error);
+    logger.error('Failed to delete task:', error);
     throw error;
   }
 };
@@ -482,7 +484,7 @@ export const deleteTasks = async (taskIds: string[]): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      console.error('Cannot delete tasks: user not authenticated');
+      logger.error('Cannot delete tasks: user not authenticated');
       return;
     }
 
@@ -495,11 +497,11 @@ export const deleteTasks = async (taskIds: string[]): Promise<void> => {
       .in('id', taskIds);
 
     if (error) {
-      console.error('Failed to delete tasks:', error);
+      logger.error('Failed to delete tasks:', error);
       throw error;
     }
   } catch (error) {
-    console.error('Failed to delete tasks:', error);
+    logger.error('Failed to delete tasks:', error);
     throw error;
   }
 };
