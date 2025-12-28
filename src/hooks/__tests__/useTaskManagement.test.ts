@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useTaskManagement } from '../useTaskManagement';
 import type { User } from '@supabase/supabase-js';
 import { Task } from '../../types';
@@ -10,7 +10,6 @@ const {
   mockSaveTasks,
   mockDeleteTasks,
   mockGenerateId,
-  mockChannel,
   mockSupabase,
 } = vi.hoisted(() => {
   const mockLoadTasks = vi.fn();
@@ -18,12 +17,12 @@ const {
   const mockDeleteTasks = vi.fn();
   const mockGenerateId = vi.fn();
   
-  const mockChannel = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mockChannel: any = {
     on: vi.fn().mockReturnThis(),
-    subscribe: vi.fn(() => {
-      return mockChannel;
-    }),
+    subscribe: vi.fn(),
   };
+  mockChannel.subscribe.mockReturnValue(mockChannel);
   
   const mockSupabase = {
     channel: vi.fn(() => mockChannel),
@@ -35,7 +34,6 @@ const {
     mockSaveTasks,
     mockDeleteTasks,
     mockGenerateId,
-    mockChannel,
     mockSupabase,
   };
 });
