@@ -1354,7 +1354,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
               // Scroll handled by useEffect watching currentView
             }}
           >
-             Poop Task
+            💩 Poop Task
           </h1>
           <div className="app-header-actions">
             <button className="tag-manager-btn desktop-tag-manager-btn" onClick={() => setShowTagManager(true)} title="Manage Tags">
@@ -1418,6 +1418,9 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
                     <span className="mobile-menu-item-icon">🚪</span>
                     <span className="mobile-menu-item-text">Sign Out</span>
                   </button>
+                  <div className="mobile-menu-version">
+                    Version {import.meta.env.VITE_APP_VERSION || '1.0.0'}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1486,6 +1489,12 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
       <main className="app-main">
         {renderView()}
       </main>
+
+      <footer className="app-footer">
+        <div className="app-footer-content">
+          <span className="app-footer-version">Version {import.meta.env.VITE_APP_VERSION || '1.0.0'}</span>
+        </div>
+      </footer>
 
       {showTaskForm && (
         <TaskForm
