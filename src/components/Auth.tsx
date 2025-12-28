@@ -6,7 +6,7 @@ interface AuthProps {
 }
 
 export default function Auth({ onAuthSuccess }: AuthProps) {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,21 +45,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       }
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { error: signOutError } = await supabase.auth.signOut();
-      if (signOutError) {
-        setError(signOutError.message);
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign out');
     } finally {
       setLoading(false);
     }

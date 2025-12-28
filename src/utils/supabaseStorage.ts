@@ -344,7 +344,7 @@ export const loadTags = async (): Promise<string[]> => {
   }
 };
 
-export const saveTags = async (tags: string[]): Promise<void> => {
+export const saveTags = async (_tags: string[]): Promise<void> => {
   // Tags are managed via tasks, so this is a no-op for Supabase
   // But we keep it for API compatibility
 };

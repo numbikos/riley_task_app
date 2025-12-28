@@ -88,7 +88,7 @@ function App() {
     checkUser();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         await loadUserData();
@@ -299,23 +299,26 @@ function App() {
           filter: `user_id=eq.${user.id}`,
         },
         async (payload) => {
+          const newRecord = payload.new as { id?: string; title?: string; user_id?: string; completed?: boolean } | null;
+          const oldRecord = payload.old as { id?: string; user_id?: string } | null;
+          
           console.log('[Real-time] Change detected:', {
             eventType: payload.eventType,
             table: payload.table,
-            new: payload.new ? {
-              id: payload.new.id,
-              title: payload.new.title,
-              user_id: payload.new.user_id,
-              completed: payload.new.completed,
+            new: newRecord ? {
+              id: newRecord.id,
+              title: newRecord.title,
+              user_id: newRecord.user_id,
+              completed: newRecord.completed,
             } : null,
-            old: payload.old ? {
-              id: payload.old.id,
-              user_id: payload.old.user_id,
+            old: oldRecord ? {
+              id: oldRecord.id,
+              user_id: oldRecord.user_id,
             } : null,
           });
           
           // Check if the change is actually for this user
-          const changedUserId = payload.new?.user_id || payload.old?.user_id;
+          const changedUserId = newRecord?.user_id || oldRecord?.user_id;
           if (changedUserId !== user.id) {
             console.warn(`[Real-time] Change detected for different user: ${changedUserId} vs ${user.id}`);
             return;
