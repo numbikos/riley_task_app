@@ -29,7 +29,6 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
   const [recurrenceMultiplierError, setRecurrenceMultiplierError] = useState<string>('');
   const [customFrequency, setCustomFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('weekly');
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
-  const [isDateInputFocused, setIsDateInputFocused] = useState(false);
   const [isLoadingTags, setIsLoadingTags] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -428,9 +427,6 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
         }
       }}
     >
-      {isDateInputFocused && isMobile && (
-        <div className="date-picker-backdrop" />
-      )}
       <div 
         className="modal-content" 
         onClick={(e) => e.stopPropagation()} 
@@ -488,12 +484,10 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
               value={dueDate}
               required
               onFocus={(e) => {
-                setIsDateInputFocused(true);
                 // On desktop, ensure the input can receive text input
                 // Some browsers need explicit focus handling for date inputs
                 e.target.focus();
               }}
-              onBlur={() => setIsDateInputFocused(false)}
               onClick={(e) => {
                 // Ensure clicking anywhere in the input (including placeholder area) focuses it
                 e.currentTarget.focus();
