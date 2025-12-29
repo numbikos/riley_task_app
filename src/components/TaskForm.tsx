@@ -30,29 +30,6 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
   const [customFrequency, setCustomFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('weekly');
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [isLoadingTags, setIsLoadingTags] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    // Detect actual mobile device (not just narrow desktop windows)
-    // Check for touch capability AND narrow width to distinguish mobile from desktop
-    const checkMobile = () => {
-      const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      const isNarrow = window.innerWidth <= 768;
-      // Only consider it mobile if it has touch capability AND is narrow
-      // This prevents narrow desktop windows from triggering mobile behavior
-      setIsMobile(hasTouch && isNarrow);
-    };
-    
-    // Check on mount
-    checkMobile();
-    
-    // Listen for resize events
-    window.addEventListener('resize', checkMobile);
-    
-    return () => {
-      window.removeEventListener('resize', checkMobile);
-    };
-  }, []);
 
   useEffect(() => {
     // Load available tags - they're stored lowercase, display with proper case
