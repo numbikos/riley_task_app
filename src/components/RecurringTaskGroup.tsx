@@ -62,25 +62,28 @@ export default function RecurringTaskGroup({
       <div 
         className="recurring-task-group-header"
         style={{
-          background: '#1A1A1A',
+          background: 'var(--bg-surface)',
           border: `1px solid ${tagColor}40`,
           borderLeft: `4px solid ${tagColor}`,
-          borderRadius: '8px',
+          borderRadius: 'var(--radius-md)',
           padding: '1rem',
           cursor: 'pointer',
-          transition: 'all 0.2s',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.75rem'
+          gap: '0.75rem',
+          boxShadow: 'var(--shadow-sm)'
         }}
         onClick={() => setIsExpanded(!isExpanded)}
         onMouseEnter={(e) => {
-          e.currentTarget.style.background = '#222';
+          e.currentTarget.style.background = 'var(--bg-surface-hover)';
           e.currentTarget.style.borderColor = `${tagColor}60`;
+          e.currentTarget.style.boxShadow = 'var(--shadow-md)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.background = '#1A1A1A';
+          e.currentTarget.style.background = 'var(--bg-surface)';
           e.currentTarget.style.borderColor = `${tagColor}40`;
+          e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
         }}
       >
         <span style={{ fontSize: '1rem', color: tagColor }}>
@@ -93,23 +96,23 @@ export default function RecurringTaskGroup({
             gap: '0.5rem',
             marginBottom: '0.25rem'
           }}>
-            <span style={{ fontWeight: 600, color: '#E0E0E0' }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
               {representativeTask.title}
             </span>
             <span style={{ 
               fontSize: '0.75rem', 
-              color: '#888',
-              background: 'rgba(64, 224, 208, 0.1)',
+              color: 'var(--secondary)',
+              background: 'rgba(16, 185, 129, 0.1)',
               padding: '0.125rem 0.375rem',
               borderRadius: '4px',
-              border: '1px solid rgba(64, 224, 208, 0.3)'
+              border: '1px solid rgba(16, 185, 129, 0.3)'
             }}>
               🔁 {recurrenceDisplay}
             </span>
           </div>
           <div style={{ 
             fontSize: '0.85rem', 
-            color: '#888',
+            color: 'var(--text-secondary)',
             display: 'flex',
             alignItems: 'center',
             gap: '0.75rem',
@@ -117,7 +120,7 @@ export default function RecurringTaskGroup({
           }}>
             {nextDueDate && (
               <span>
-                Next: <span style={{ color: nextIncompleteTask ? '#40E0D0' : '#888' }}>
+                Next: <span style={{ color: nextIncompleteTask ? 'var(--secondary)' : 'var(--text-muted)' }}>
                   {getDateDisplay(nextDueDate)}
                 </span>
               </span>
@@ -140,24 +143,8 @@ export default function RecurringTaskGroup({
                 e.stopPropagation();
                 onEdit(representativeTask);
               }}
-              style={{
-                background: 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '4px',
-                color: '#888',
-                padding: '0.25rem 0.5rem',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#40E0D0';
-                e.currentTarget.style.color = '#40E0D0';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                e.currentTarget.style.color = '#888';
-              }}
+              className="btn btn-secondary btn-small"
+              style={{ padding: '0.25rem 0.75rem' }}
               title="Edit recurring series"
             >
               Edit
@@ -177,17 +164,17 @@ export default function RecurringTaskGroup({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#888',
+              color: 'var(--text-muted)',
               cursor: 'pointer',
               fontSize: '1rem',
               padding: '0.25rem',
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#FF6B6B';
+              e.currentTarget.style.color = 'var(--danger)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#888';
+              e.currentTarget.style.color = 'var(--text-muted)';
             }}
             title={onDeleteGroup ? "Delete all incomplete tasks in this group" : "Delete recurring series"}
           >
@@ -198,9 +185,12 @@ export default function RecurringTaskGroup({
       {isExpanded && (
         <div style={{ 
           marginTop: '0.5rem', 
-          marginLeft: '1.5rem',
+          marginLeft: '1rem',
           paddingLeft: '1rem',
-          borderLeft: `2px solid ${tagColor}40`
+          borderLeft: `2px solid ${tagColor}40`,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
         }}>
           {sortedTasks.map(task => (
             <TaskCard

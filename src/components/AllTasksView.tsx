@@ -115,7 +115,7 @@ export default function AllTasksView({ tasks, tagColors, onToggleComplete, onEdi
               style={{ borderLeftColor: tagColor }}
               onClick={() => toggleTagCollapse(tag)}
             >
-              <span className="tag-group-collapse-icon">
+              <span className="tag-group-collapse-icon" style={{ color: tagColor }}>
                 {isCollapsed ? '▶' : '▼'}
               </span>
               <span className="tag-group-name" style={{ color: tagColor }}>

@@ -22,6 +22,7 @@ import DayView from './components/DayView';
 import WeekView from './components/WeekView';
 import AllTasksView from './components/AllTasksView';
 import CompletedView from './components/CompletedView';
+import { GlobalSearch } from './components/GlobalSearch';
 import TaskForm from './components/TaskForm';
 import TagManager from './components/TagManager';
 import UndoNotification from './components/UndoNotification';
@@ -85,8 +86,20 @@ function App() {
   const [initialDueDate, setInitialDueDate] = useState<string | null>(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
   const [showTagManager, setShowTagManager] = useState(false);
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(max-width: 768px)').matches;
+  });
+
+  // Track viewport size to conditionally render mobile-only UI
+  useEffect(() => {
+    const updateIsMobile = () => setIsMobile(window.matchMedia('(max-width: 768px)').matches);
+    updateIsMobile();
+    window.addEventListener('resize', updateIsMobile);
+    return () => window.removeEventListener('resize', updateIsMobile);
+  }, []);
 
   // Load tag colors when user is authenticated
   useEffect(() => {
@@ -376,19 +389,19 @@ function App() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0A0A0A 0%, #121212 100%)',
-        color: '#E0E0E0',
+        background: 'var(--bg-main)',
+        color: 'var(--text-main)',
         padding: '2rem',
       }}>
         <div style={{
           maxWidth: '600px',
-          background: '#1A1A1A',
-          border: '1px solid rgba(255, 0, 0, 0.3)',
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--danger)',
           borderRadius: '12px',
           padding: '2rem',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+          boxShadow: 'var(--shadow-xl)',
         }}>
-          <h2 style={{ color: '#FF6B6B', marginTop: 0, marginBottom: '1rem' }}>Configuration Error</h2>
+          <h2 style={{ color: 'var(--danger)', marginTop: 0, marginBottom: '1rem' }}>Configuration Error</h2>
           <p style={{ marginBottom: '1rem', lineHeight: '1.6' }}>
             Missing Supabase environment variables. Please create a <code style={{ background: '#2A2A2A', padding: '0.2rem 0.4rem', borderRadius: '4px' }}>.env</code> file in the root directory with:
           </p>
@@ -419,8 +432,8 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0A0A0A 0%, #121212 100%)',
-        color: '#E0E0E0',
+        background: 'var(--bg-main)',
+        color: 'var(--text-main)',
       }}>
         <div>Loading...</div>
       </div>
@@ -435,140 +448,165 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
   return (
     <div className="app">
       <header className="app-header">
-        <div className="app-header-top">
-          <h1 
-            onClick={() => {
-              resetToToday();
-            }}
-          >
-            💩 Poop Task
-          </h1>
-          <div className="app-header-actions">
-            <button className="tag-manager-btn desktop-tag-manager-btn" onClick={() => setShowTagManager(true)} title="Manage Tags">
-              🏷️
+        <div className="header-left">
+          <div className="app-logo" onClick={() => resetToToday()}>
+            <span>Riley's Task Manager</span>
+          </div>
+          <nav className="main-nav">
+            <button 
+              className={`nav-tab ${currentView === 'today' ? 'active' : ''}`}
+              onClick={() => resetToToday()}
+            >
+              Today
             </button>
             <button 
-              className="mobile-menu-btn"
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
-              title="Menu"
-              aria-label="Menu"
+              className={`nav-tab ${currentView === 'tomorrow' ? 'active' : ''}`}
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(0, 0, 0, 0);
+                setTomorrowViewDate(tomorrow);
+                setCurrentView('tomorrow');
+                setSearchQuery('');
+              }}
             >
-              <span className="hamburger-icon">☰</span>
+              Upcoming
             </button>
-            <button className="add-task-btn" onClick={() => { setEditingTask(null); setInitialDueDate(null); setShowTaskForm(true); }}>
-              <span className="add-task-icon">+</span>
-              <span className="add-task-text">Add Task</span>
+            <button 
+              className={`nav-tab ${currentView === 'week' ? 'active' : ''}`}
+              onClick={() => { setCurrentView('week'); setSearchQuery(''); setWeekViewDate(null); }}
+            >
+              Next 5
             </button>
-            <div className="user-profile">
-              <span className="user-email">{user?.email}</span>
-              <button 
-                className="logout-btn desktop-logout-btn" 
-                onClick={handleLogout} 
-                title="Sign Out"
-                aria-label="Sign Out"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-          {showMobileMenu && (
-            <div className="mobile-menu-overlay" onClick={() => setShowMobileMenu(false)}>
-              <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
-                <div className="mobile-menu-header">
-                  <span className="mobile-menu-title">Menu</span>
+            <button 
+              className={`nav-tab ${currentView === 'all' ? 'active' : ''}`}
+              onClick={() => { setCurrentView('all'); setSearchQuery(''); }}
+            >
+              All Tasks
+            </button>
+            <button 
+              className={`nav-tab ${currentView === 'completed' ? 'active' : ''}`}
+              onClick={() => { setCurrentView('completed'); setSearchQuery(''); }}
+            >
+              Completed
+            </button>
+          </nav>
+        </div>
+
+        <GlobalSearch 
+          tasks={tasks}
+          tagColors={tagColors}
+          onSelectTask={handleEdit}
+          query={searchQuery}
+          setQuery={setSearchQuery}
+        />
+
+        <div className="header-right">
+          <button 
+            className="btn-new-task"
+            onClick={() => { setEditingTask(null); setInitialDueDate(null); setShowTaskForm(true); }}
+            title="New Task"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span>New Task</span>
+          </button>
+
+          <div className="user-menu-container" style={{ position: 'relative' }}>
+            <button 
+              className="user-menu-trigger"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              title={user?.email || 'User'}
+            >
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </button>
+            
+            {showUserMenu && (
+              <>
+                <div className="menu-overlay" onClick={() => setShowUserMenu(false)} />
+                <div className="user-menu-dropdown">
+                  <div className="user-menu-email">{user?.email}</div>
                   <button 
-                    className="mobile-menu-close"
-                    onClick={() => setShowMobileMenu(false)}
-                    aria-label="Close menu"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="mobile-menu-items">
-                  <button 
-                    className="mobile-menu-item"
-                    onClick={() => {
+                    className="user-menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setShowTagManager(true);
-                      setShowMobileMenu(false);
+                      setShowUserMenu(false);
                     }}
                   >
-                    <span className="mobile-menu-item-text">Manage Tags</span>
+                    Manage Tags
                   </button>
                   <button 
-                    className="mobile-menu-item mobile-menu-item-logout"
-                    onClick={() => {
+                    className="user-menu-item logout"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       handleLogout();
-                      setShowMobileMenu(false);
+                      setShowUserMenu(false);
                     }}
                   >
-                    <span className="mobile-menu-item-text">Sign Out</span>
+                    Sign Out
                   </button>
-                  <div className="mobile-menu-version">
+                  <div style={{ fontSize: '0.75rem', color: '#666', padding: '0.5rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '0.25rem' }}>
                     Version {import.meta.env.VITE_APP_VERSION || '1.0.0'}
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
-        <nav className="view-nav">
+      </header>
+
+      <main className="app-main">
+        {renderView()}
+      </main>
+
+      {isMobile && (
+        <nav className="mobile-bottom-nav">
           <button 
             className={currentView === 'today' ? 'active' : ''} 
-            onClick={() => { 
-              resetToToday();
-            }}
+            onClick={() => resetToToday()}
           >
-            Today
+            <span className="nav-icon">📅</span>
+            <span className="nav-label">Today</span>
           </button>
           <button 
             className={currentView === 'tomorrow' ? 'active' : ''} 
-            onClick={() => { 
+            onClick={() => {
               const tomorrow = new Date();
               tomorrow.setDate(tomorrow.getDate() + 1);
               tomorrow.setHours(0, 0, 0, 0);
               setTomorrowViewDate(tomorrow);
-              setCurrentView('tomorrow'); 
-              setSearchQuery(''); 
+              setCurrentView('tomorrow');
+              setSearchQuery('');
             }}
           >
-            Tomorrow
+            <span className="nav-icon">🌅</span>
+            <span className="nav-label">Tomorrow</span>
           </button>
           <button 
             className={currentView === 'week' ? 'active' : ''} 
             onClick={() => { setCurrentView('week'); setSearchQuery(''); setWeekViewDate(null); }}
           >
-            Next 5
-          </button>
-          <button 
-            className={currentView === 'all' ? 'active' : ''} 
-            onClick={() => { setCurrentView('all'); setSearchQuery(''); }}
-          >
-            All Tasks
+            <span className="nav-icon">🗓️</span>
+            <span className="nav-label">Next 5</span>
           </button>
           <button 
             className={currentView === 'completed' ? 'active' : ''} 
             onClick={() => { setCurrentView('completed'); setSearchQuery(''); }}
           >
-            Completed
+            <span className="nav-icon">✅</span>
+            <span className="nav-label">Done</span>
+          </button>
+          <button 
+            className={currentView === 'all' ? 'active' : ''} 
+            onClick={() => { setCurrentView('all'); setSearchQuery(''); }}
+          >
+            <span className="nav-icon">📁</span>
+            <span className="nav-label">All</span>
           </button>
         </nav>
-      </header>
-
-      {currentView !== 'week' && (
-        <div className="search-container">
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
       )}
-
-      <main className="app-main">
-        {renderView()}
-      </main>
 
       <footer className="app-footer">
         <div className="app-footer-content">

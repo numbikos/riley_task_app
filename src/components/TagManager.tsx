@@ -92,18 +92,18 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
   };
 
   const predefinedColors = [
-    '#0080FF', // Blue
-    '#40E0D0', // Cyan
-    '#FF6B6B', // Red
-    '#FFD700', // Gold
-    '#673AB7', // Purple
-    '#4CAF50', // Green
-    '#FF9800', // Orange
-    '#9C27B0', // Deep Purple
-    '#00BCD4', // Light Blue
-    '#F44336', // Deep Red
-    '#E91E63', // Pink
-    '#795548', // Brown
+    '#6366F1', // Indigo
+    '#10B981', // Emerald
+    '#FB7185', // Rose
+    '#F59E0B', // Amber
+    '#0EA5E9', // Sky
+    '#8B5CF6', // Violet
+    '#D946EF', // Fuchsia
+    '#14B8A6', // Teal
+    '#F97316', // Orange
+    '#06B6D4', // Cyan
+    '#84CC16', // Lime
+    '#64748B', // Slate
   ];
 
   const getTagUsageCount = (tag: string) => {

@@ -65,7 +65,7 @@ export default function TaskCard({ task, tagColors = {}, onToggleComplete, onEdi
       </div>
       
       {showDate && task.dueDate && (
-        <div className="task-description" style={{ color: isDateOverdue(task.dueDate) && !task.completed ? '#FF6B6B' : '#888' }}>
+        <div className="task-description" style={{ color: isDateOverdue(task.dueDate) && !task.completed ? 'var(--danger)' : 'var(--text-secondary)' }}>
           Due: {getDateDisplay(task.dueDate)}
           {isDateOverdue(task.dueDate) && !task.completed && ' (Overdue)'}
           {task.recurrence && (
@@ -76,13 +76,24 @@ export default function TaskCard({ task, tagColors = {}, onToggleComplete, onEdi
         </div>
       )}
       {!showDate && task.recurrence && (
-        <div className="task-description" style={{ color: '#888', fontSize: '0.85rem' }}>
+        <div className="task-description" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
           🔁 Repeats {formatRecurrenceDisplay(task.recurrence, task.recurrenceMultiplier, task.customFrequency)}
         </div>
       )}
-      {task.isLastInstance && (
-        <div className="task-description" style={{ color: '#FF6B6B', fontSize: '0.9rem', fontWeight: 'bold', marginTop: '0.5rem' }}>
-          ⚠️ PLEASE RENEW
+      {task.isLastInstance && !task.completed && (
+        <div className="task-renewal-container" onClick={(e) => e.stopPropagation()}>
+          <div className="task-description" style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 'bold', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+            ⚠️ LAST OCCURRENCE
+          </div>
+          <button 
+            className="btn btn-primary btn-small renew-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(task);
+            }}
+          >
+            Extend recurring task
+          </button>
         </div>
       )}
 
@@ -126,8 +137,19 @@ export default function TaskCard({ task, tagColors = {}, onToggleComplete, onEdi
             </div>
           ))}
           {totalSubtasks > 0 && (
-            <div className="subtask-progress">
-              {completedSubtasks} of {totalSubtasks} completed
+            <div className="subtask-progress-container">
+              <div className="subtask-progress-bar-bg">
+                <div 
+                  className="subtask-progress-bar-fill" 
+                  style={{ 
+                    width: `${(completedSubtasks / totalSubtasks) * 100}%`,
+                    background: tagColor
+                  }}
+                ></div>
+              </div>
+              <div className="subtask-progress-text">
+                {completedSubtasks}/{totalSubtasks}
+              </div>
             </div>
           )}
         </div>

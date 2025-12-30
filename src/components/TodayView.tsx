@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Task, TaskUpdate, getTagColor } from '../types';
-import TaskCard from './TaskCard';
+import { Task, TaskUpdate } from '../types';
+import GroupedTaskList from './GroupedTaskList';
 import { isDateOverdue, formatDate, formatFullDate } from '../utils/dateUtils';
 import { groupTasksByTag } from '../utils/taskUtils';
 
@@ -45,54 +45,6 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
     });
   }, []);
 
-  const renderGroupedTasks = useCallback((taskList: Task[], showDate: boolean = false) => {
-    const { grouped, sortedTags } = groupTasksByTag(taskList);
-    
-    return sortedTags.map(tag => {
-      const tagTasks = grouped[tag];
-      const tagColor = tag === 'untagged' 
-        ? getTagColor('default', tagColors)
-        : getTagColor(tag, tagColors);
-      const tagDisplay = tag === 'untagged' ? 'Untagged' : tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-      const isCollapsed = collapsedTags.has(tag);
-
-      return (
-        <div key={tag} className="tag-group">
-          <div 
-            className="tag-group-header" 
-            style={{ borderLeftColor: tagColor }}
-            onClick={() => toggleTagCollapse(tag)}
-          >
-            <span className="tag-group-collapse-icon">
-              {isCollapsed ? '▶' : '▼'}
-            </span>
-            <span className="tag-group-name" style={{ color: tagColor }}>
-              {tagDisplay}
-            </span>
-            <span className="tag-group-count" style={{ color: tagColor }}>{tagTasks.length}</span>
-          </div>
-          {!isCollapsed && (
-            <div className="tag-group-tasks">
-              {tagTasks.map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  tagColors={tagColors}
-                  onToggleComplete={onToggleComplete}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onUpdateTask={onUpdateTask}
-                  showTags={false}
-                  showDate={showDate}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    });
-  }, [collapsedTags, tagColors, onToggleComplete, onEdit, onDelete, onUpdateTask]);
-
   // Early return AFTER all hooks have been called
   if (tasks.length === 0) {
     return (
@@ -118,18 +70,35 @@ export default function TodayView({ tasks, date, tagColors, onToggleComplete, on
     <div>
       <div className="task-list">
         {todayTasks.length > 0 && (
-          <>
-            {renderGroupedTasks(todayTasks)}
-          </>
+          <GroupedTaskList
+            tasks={todayTasks}
+            tagColors={tagColors}
+            onToggleComplete={onToggleComplete}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onUpdateTask={onUpdateTask}
+            collapsedTags={collapsedTags}
+            onToggleTagCollapse={toggleTagCollapse}
+          />
         )}
         {overdueTasks.length > 0 && (
           <>
             <div className="overdue-section-header">
-              <h3 style={{ color: '#FF6B6B', margin: '1.5rem 0 0.75rem 0', fontSize: '1.1rem', fontWeight: 600 }}>
+              <h3 style={{ color: 'var(--danger)', margin: '1.5rem 0 0.75rem 0', fontSize: '1.1rem', fontWeight: 600 }}>
                 Overdue
               </h3>
             </div>
-            {renderGroupedTasks(overdueTasks, true)}
+            <GroupedTaskList
+              tasks={overdueTasks}
+              tagColors={tagColors}
+              onToggleComplete={onToggleComplete}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onUpdateTask={onUpdateTask}
+              collapsedTags={collapsedTags}
+              onToggleTagCollapse={toggleTagCollapse}
+              showDate={true}
+            />
           </>
         )}
       </div>

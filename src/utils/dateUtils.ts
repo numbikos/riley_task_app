@@ -114,6 +114,19 @@ export const formatFullDate = (date: Date | string): string => {
   return formatDateMMDDYY(d);
 };
 
+/**
+ * Formats a date for full display: Wed, Dec 30, 2025
+ */
+export const formatDateLong = (date: Date | string): string => {
+  const d = toLocalDate(date);
+  return d.toLocaleDateString(undefined, { 
+    weekday: 'short',
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
+
 export const isDateOverdue = (date: Date | string | null): boolean => {
   if (!date) return false;
   const d = toLocalDate(date);

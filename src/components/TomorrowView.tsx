@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Task, TaskUpdate, getTagColor } from '../types';
-import TaskCard from './TaskCard';
+import { Task, TaskUpdate } from '../types';
+import NavigationHeader from './NavigationHeader';
+import GroupedTaskList from './GroupedTaskList';
 import { formatDate, formatFullDate } from '../utils/dateUtils';
 import { startOfDay } from 'date-fns';
 import { groupTasksByTag } from '../utils/taskUtils';
@@ -54,13 +55,11 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
   if (tasks.length === 0) {
     return (
       <div>
-        <div className="day-nav-header">
-          <div className="day-nav">
-            <button className="day-nav-btn" onClick={goToPreviousDay}>← Previous</button>
-            <h2 className="day-nav-title">{fullDateDisplay}</h2>
-            <button className="day-nav-btn" onClick={goToNextDay}>Next →</button>
-          </div>
-        </div>
+        <NavigationHeader
+          title={fullDateDisplay}
+          onPrev={goToPreviousDay}
+          onNext={goToNextDay}
+        />
         <div className="empty-state">
           <h2>No tasks for {isTomorrow ? 'tomorrow' : fullDateDisplay.toLowerCase()}</h2>
           {onAddTask ? (
@@ -80,56 +79,22 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
 
   return (
     <div>
-      <div className="day-nav-header">
-        <div className="day-nav">
-          <button className="day-nav-btn" onClick={goToPreviousDay}>← Previous</button>
-          <h2 className="day-nav-title">{fullDateDisplay}</h2>
-          <button className="day-nav-btn" onClick={goToNextDay}>Next →</button>
-        </div>
-      </div>
+      <NavigationHeader
+        title={fullDateDisplay}
+        onPrev={goToPreviousDay}
+        onNext={goToNextDay}
+      />
       <div className="task-list">
-        {sortedTags.map(tag => {
-        const tagTasks = grouped[tag];
-        const tagColor = tag === 'untagged' 
-          ? getTagColor('default', tagColors)
-          : getTagColor(tag, tagColors);
-        const tagDisplay = tag === 'untagged' ? 'Untagged' : tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-        const isCollapsed = collapsedTags.has(tag);
-
-        return (
-          <div key={tag} className="tag-group">
-            <div 
-              className="tag-group-header" 
-              style={{ borderLeftColor: tagColor }}
-              onClick={() => toggleTagCollapse(tag)}
-            >
-              <span className="tag-group-collapse-icon">
-                {isCollapsed ? '▶' : '▼'}
-              </span>
-              <span className="tag-group-name" style={{ color: tagColor }}>
-                {tagDisplay}
-              </span>
-              <span className="tag-group-count" style={{ color: tagColor }}>{tagTasks.length}</span>
-            </div>
-            {!isCollapsed && (
-              <div className="tag-group-tasks">
-                {tagTasks.map(task => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    tagColors={tagColors}
-                    onToggleComplete={onToggleComplete}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onUpdateTask={onUpdateTask}
-                    showTags={false}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+        <GroupedTaskList
+          tasks={tasks}
+          tagColors={tagColors}
+          onToggleComplete={onToggleComplete}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onUpdateTask={onUpdateTask}
+          collapsedTags={collapsedTags}
+          onToggleTagCollapse={toggleTagCollapse}
+        />
       </div>
     </div>
   );

@@ -455,7 +455,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
         <form onSubmit={handleSubmit}>
 
           <div className="form-group">
-            <label>Due Date <span style={{ color: '#FF6B6B' }}>*</span></label>
+            <label>Due Date <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input
               type="date"
               value={dueDate}
@@ -481,208 +481,75 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
 
           <div className="form-group">
             <label>Recurrence</label>
-            {!dueDate && (
-              <div style={{ padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', fontSize: '0.85rem', color: '#888', marginBottom: '0.5rem' }}>
-                Set a due date to enable recurrence options
-              </div>
-            )}
-            <div className="recurrence-selector" style={{ opacity: dueDate ? 1 : 0.5, pointerEvents: dueDate ? 'auto' : 'none' }}>
-              <div className="recurrence-options">
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === 'daily' ? 'active' : ''}`}
-                  onClick={() => setRecurrence('daily')}
-                  disabled={!dueDate}
+            <div className={`recurrence-selector ${!dueDate ? 'disabled' : ''}`}>
+              {!dueDate ? (
+                <div className="recurrence-helper-text">
+                  Set a due date first to enable repeating tasks.
+                </div>
+              ) : (
+                <select
+                  className="recurrence-dropdown"
+                  value={recurrence === null ? 'none' : recurrence}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setRecurrence(value === 'none' ? null : value as RecurrenceType);
+                  }}
                 >
-                  Daily
-                </button>
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === 'weekly' ? 'active' : ''}`}
-                  onClick={() => setRecurrence('weekly')}
-                  disabled={!dueDate}
-                >
-                  Weekly
-                </button>
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === 'monthly' ? 'active' : ''}`}
-                  onClick={() => setRecurrence('monthly')}
-                  disabled={!dueDate}
-                >
-                  Monthly
-                </button>
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === 'quarterly' ? 'active' : ''}`}
-                  onClick={() => setRecurrence('quarterly')}
-                  disabled={!dueDate}
-                >
-                  Quarterly
-                </button>
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === 'yearly' ? 'active' : ''}`}
-                  onClick={() => setRecurrence('yearly')}
-                  disabled={!dueDate}
-                >
-                  Annually
-                </button>
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === 'custom' ? 'active' : ''}`}
-                  onClick={() => setRecurrence('custom')}
-                  disabled={!dueDate}
-                >
-                  Custom
-                </button>
-                <button
-                  type="button"
-                  className={`recurrence-option ${recurrence === null ? 'active' : ''}`}
-                  onClick={() => setRecurrence(null)}
-                  disabled={!dueDate}
-                >
-                  None
-                </button>
-                {task && task.recurrenceGroupId && onExtendRecurring && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (onExtendRecurring) {
-                        const confirmed = window.confirm(
-                          `Add 50 more occurrences to "${task.title}"?\n\nThis will add 50 new instances starting from the day after the last occurrence.`
-                        );
-                        if (confirmed) {
-                          onExtendRecurring();
-                          onCancel();
-                        }
-                      }
-                    }}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      background: 'transparent',
-                      border: '1px solid rgba(64, 224, 208, 0.5)',
-                      borderRadius: '8px',
-                      color: '#40E0D0',
-                      fontSize: '0.9rem',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      fontFamily: 'inherit',
-                      marginLeft: '0.5rem'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(64, 224, 208, 0.2)';
-                      e.currentTarget.style.borderColor = '#40E0D0';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.borderColor = 'rgba(64, 224, 208, 0.5)';
-                    }}
-                    title="Add 50 more occurrences to this recurring task"
-                  >
-                    +50
-                  </button>
-                )}
-              </div>
-              {recurrence === 'custom' && dueDate && (
-                <div className="custom-recurrence-options" style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px' }}>
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Annually</option>
+                  <option value="custom">Custom...</option>
+                </select>
+              )}
+              
+              {dueDate && recurrence === 'custom' && (
+                <div className="custom-recurrence-options">
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'stretch' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: '0 0 auto' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#B0B0B0', fontWeight: 500 }}>Number</label>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Number</label>
                       <input
                         type="number"
                         min="1"
                         max="50"
+                        className="recurrence-multiplier-input"
                         value={recurrenceMultiplierInput}
                         onChange={(e) => {
                           const inputValue = e.target.value;
-                          // Allow empty input and partial numbers while typing
                           setRecurrenceMultiplierInput(inputValue);
-                          // Clear error when user starts typing
                           if (recurrenceMultiplierError) {
                             setRecurrenceMultiplierError('');
                           }
-                          
-                          // Only update the numeric value if it's a valid number
                           const numValue = parseInt(inputValue, 10);
                           if (!isNaN(numValue) && numValue >= 1 && numValue <= 50) {
                             setRecurrenceMultiplier(numValue);
                           }
                         }}
-                        style={{
-                          width: '80px',
-                          padding: '0.75rem',
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: `1px solid ${recurrenceMultiplierError ? '#FF6B6B' : 'rgba(255, 255, 255, 0.2)'}`,
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '0.9rem',
-                          fontFamily: 'inherit',
-                          boxSizing: 'border-box',
-                          outline: 'none',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#40E0D0';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(64, 224, 208, 0.2)';
-                        }}
                         onBlur={(e) => {
-                          // Validate on blur - show error but don't auto-fix
                           const numValue = parseInt(e.target.value, 10);
-                          if (isNaN(numValue) || numValue < 1) {
-                            setRecurrenceMultiplierError('Please enter a number between 1 and 50');
-                            e.target.style.borderColor = '#FF6B6B';
-                            e.target.style.boxShadow = 'none';
-                          } else if (numValue > 50) {
-                            setRecurrenceMultiplierError('Please enter a number between 1 and 50');
-                            e.target.style.borderColor = '#FF6B6B';
-                            e.target.style.boxShadow = 'none';
+                          if (isNaN(numValue) || numValue < 1 || numValue > 50) {
+                            setRecurrenceMultiplierError('Enter a number between 1 and 50');
                           } else {
                             setRecurrenceMultiplierError('');
                             setRecurrenceMultiplier(numValue);
                             setRecurrenceMultiplierInput(numValue.toString());
-                            e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                            e.target.style.boxShadow = 'none';
                           }
                         }}
                       />
                       {recurrenceMultiplierError && (
-                        <div style={{ fontSize: '0.75rem', color: '#FF6B6B', marginTop: '0.25rem' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
                           {recurrenceMultiplierError}
                         </div>
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: '1 1 auto' }}>
-                      <label style={{ fontSize: '0.85rem', color: '#B0B0B0', fontWeight: 500 }}>Frequency</label>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Frequency</label>
                       <select
                         value={customFrequency}
+                        className="custom-frequency-select"
                         onChange={(e) => setCustomFrequency(e.target.value as typeof customFrequency)}
-                        style={{
-                          width: '100%',
-                          padding: '0.75rem',
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '0.9rem',
-                          fontFamily: 'inherit',
-                          cursor: 'pointer',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          height: '44px'
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#40E0D0';
-                          e.target.style.boxShadow = '0 0 0 3px rgba(64, 224, 208, 0.2)';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                          e.target.style.boxShadow = 'none';
-                        }}
                       >
                         <option value="daily">Days</option>
                         <option value="weekly">Weeks</option>
@@ -695,6 +562,27 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                   <div style={{ marginTop: '1rem', fontSize: '0.85rem', opacity: 0.8 }}>
                     Will create 50 instances: Every {recurrenceMultiplier} {customFrequency === 'quarterly' ? 'quarters' : customFrequency === 'yearly' ? 'years' : customFrequency + 's'}
                   </div>
+                </div>
+              )}
+
+              {task && task.recurrenceGroupId && onExtendRecurring && (
+                <div style={{ marginTop: '1rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const confirmed = window.confirm(
+                        `Add 50 more occurrences to "${task.title}"?`
+                      );
+                      if (confirmed) {
+                        onExtendRecurring();
+                        onCancel();
+                      }
+                    }}
+                  >
+                    +50 occurrences
+                  </button>
                 </div>
               )}
             </div>

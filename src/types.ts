@@ -41,12 +41,12 @@ export interface TaskUpdateFlags {
 export type TaskUpdate = Partial<Task> & TaskUpdateFlags;
 
 export const DEFAULT_TAG_COLORS: Record<string, string> = {
-  'zero': '#0080FF',
-  'ollie': '#40E0D0',
-  'personal': '#FF6B6B',
-  'work': '#FFD700',
-  'home': '#673AB7',
-  'default': '#888'
+  'zero': '#6366F1',
+  'ollie': '#10B981',
+  'personal': '#FB7185',
+  'work': '#F59E0B',
+  'home': '#8B5CF6',
+  'default': '#64748B'
 };
 
 // Utility function to get tag color (checks stored colors first, then defaults)

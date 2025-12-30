@@ -56,35 +56,36 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #0A0A0A 0%, #121212 100%)',
+      background: 'var(--bg-main)',
       padding: '2rem',
     }}>
       <div style={{
-        background: 'linear-gradient(135deg, #121212 0%, #1A1A1A 100%)',
-        border: '1px solid rgba(64, 224, 208, 0.3)',
-        borderRadius: '16px',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-xl)',
         padding: '2.5rem',
         maxWidth: '400px',
         width: '100%',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+        boxShadow: 'var(--shadow-xl)',
       }}>
         <h1 style={{
-          fontSize: '2rem',
+          fontSize: '2.5rem',
           marginBottom: '0.5rem',
-          fontWeight: 700,
-          background: 'linear-gradient(135deg, #0080FF 0%, #40E0D0 100%)',
+          fontWeight: 800,
+          background: 'var(--gradient-primary)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           backgroundClip: 'text',
           textAlign: 'center',
+          letterSpacing: '-0.025em',
         }}>
-          💩 Poop Task
+          Riley's Task Manager
         </h1>
         <p style={{
           textAlign: 'center',
-          color: '#888',
+          color: 'var(--text-secondary)',
           marginBottom: '2rem',
-          fontSize: '0.9rem',
+          fontSize: '1rem',
         }}>
           {isSignUp ? 'Create your account' : 'Sign in to your account'}
         </p>
@@ -94,7 +95,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             <label style={{
               display: 'block',
               marginBottom: '0.5rem',
-              color: '#E0E0E0',
+              color: 'var(--text-secondary)',
               fontSize: '0.9rem',
               fontWeight: 500,
             }}>
@@ -109,19 +110,21 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               style={{
                 width: '100%',
                 padding: '0.75rem',
-                background: '#0A0A0A',
-                border: '1px solid rgba(64, 224, 208, 0.2)',
-                borderRadius: '8px',
-                color: '#E0E0E0',
+                background: 'var(--bg-main)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-main)',
                 fontSize: '1rem',
                 outline: 'none',
-                transition: 'all 0.2s',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               }}
               onFocus={(e) => {
-                e.target.style.borderColor = 'rgba(64, 224, 208, 0.5)';
+                e.target.style.borderColor = 'var(--primary)';
+                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
               }}
               onBlur={(e) => {
-                e.target.style.borderColor = 'rgba(64, 224, 208, 0.2)';
+                e.target.style.borderColor = 'var(--border)';
+                e.target.style.boxShadow = 'none';
               }}
             />
           </div>
@@ -130,7 +133,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             <label style={{
               display: 'block',
               marginBottom: '0.5rem',
-              color: '#E0E0E0',
+              color: 'var(--text-secondary)',
               fontSize: '0.9rem',
               fontWeight: 500,
             }}>
@@ -146,19 +149,21 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               style={{
                 width: '100%',
                 padding: '0.75rem',
-                background: '#0A0A0A',
-                border: '1px solid rgba(64, 224, 208, 0.2)',
-                borderRadius: '8px',
-                color: '#E0E0E0',
+                background: 'var(--bg-main)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-main)',
                 fontSize: '1rem',
                 outline: 'none',
-                transition: 'all 0.2s',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               }}
               onFocus={(e) => {
-                e.target.style.borderColor = 'rgba(64, 224, 208, 0.5)';
+                e.target.style.borderColor = 'var(--primary)';
+                e.target.style.boxShadow = '0 0 0 3px rgba(99, 102, 241, 0.1)';
               }}
               onBlur={(e) => {
-                e.target.style.borderColor = 'rgba(64, 224, 208, 0.2)';
+                e.target.style.borderColor = 'var(--border)';
+                e.target.style.boxShadow = 'none';
               }}
             />
           </div>
@@ -166,10 +171,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           {error && (
             <div style={{
               padding: '0.75rem',
-              background: 'rgba(255, 107, 107, 0.1)',
-              border: '1px solid rgba(255, 107, 107, 0.3)',
-              borderRadius: '8px',
-              color: '#FF6B6B',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--danger)',
               marginBottom: '1rem',
               fontSize: '0.9rem',
             }}>
@@ -180,10 +185,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           {message && (
             <div style={{
               padding: '0.75rem',
-              background: 'rgba(64, 224, 208, 0.1)',
-              border: '1px solid rgba(64, 224, 208, 0.3)',
-              borderRadius: '8px',
-              color: '#40E0D0',
+              background: 'rgba(16, 185, 129, 0.1)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--success)',
               marginBottom: '1rem',
               fontSize: '0.9rem',
             }}>
@@ -198,26 +203,27 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               width: '100%',
               padding: '0.75rem',
               background: loading
-                ? 'rgba(64, 224, 208, 0.3)'
-                : 'linear-gradient(135deg, #0080FF 0%, #40E0D0 100%)',
+                ? 'var(--text-muted)'
+                : 'var(--gradient-primary)',
               border: 'none',
-              borderRadius: '8px',
+              borderRadius: 'var(--radius-md)',
               color: '#FFFFFF',
               fontSize: '1rem',
               fontWeight: 600,
               cursor: loading ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               marginBottom: '1rem',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
             }}
             onMouseEnter={(e) => {
               if (!loading) {
-                e.currentTarget.style.transform = 'scale(1.02)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(64, 224, 208, 0.4)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(99, 102, 241, 0.4)';
               }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
             }}
           >
             {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}

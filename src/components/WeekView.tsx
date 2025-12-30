@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Task, TaskUpdate, getTagColor as getTagColorUtil } from '../types';
+import NavigationHeader from './NavigationHeader';
 import { getNext5Days, formatDate, isSameDate, getDateDisplay, addDays, subDays, formatFullDate } from '../utils/dateUtils';
 import { startOfDay } from 'date-fns';
 
@@ -151,16 +152,14 @@ export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, o
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="week-view-header">
-        <div className="week-nav">
-          <button className="week-nav-btn" onClick={goToPreviousWeek}>← Previous</button>
-          <h2 className="week-title">
-            {formatFullDate(weekDates[0])} - {formatFullDate(weekDates[weekDates.length - 1])}
-          </h2>
-          <button className="week-nav-btn" onClick={goToNextWeek}>Next →</button>
-        </div>
-        <button className="week-today-btn" onClick={goToToday}>Today</button>
-      </div>
+      <NavigationHeader
+        title={`${formatFullDate(weekDates[0])} - ${formatFullDate(weekDates[weekDates.length - 1])}`}
+        onPrev={goToPreviousWeek}
+        onNext={goToNextWeek}
+        onToday={goToToday}
+        className="week-view-header"
+        titleClassName="week-title"
+      />
       <div className="week-view">
         {weekDates.map((date, index) => {
           const dayTasks = getTasksForDate(date);
@@ -184,7 +183,7 @@ export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, o
               <div 
                 className="week-day-header" 
                 style={{ 
-                  color: isToday ? '#40E0D0' : '#888',
+                  color: isToday ? 'var(--secondary)' : 'var(--text-secondary)',
                   cursor: isClickable ? 'pointer' : 'default',
                   textDecoration: isClickable ? 'underline' : 'none'
                 }}
@@ -206,7 +205,7 @@ export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, o
                       Add task
                     </button>
                   ) : (
-                    <div style={{ color: '#666', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.5rem' }}>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic', padding: '0.5rem' }}>
                       No tasks
                     </div>
                   )
