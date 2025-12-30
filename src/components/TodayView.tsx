@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback } from 'react';
 import { Task, TaskUpdate } from '../types';
 import GroupedTaskList from './GroupedTaskList';
 import { isDateOverdue, formatDate, formatFullDate } from '../utils/dateUtils';
-import { groupTasksByTag } from '../utils/taskUtils';
 
 interface TodayViewProps {
   tasks: Task[];

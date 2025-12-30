@@ -4,7 +4,6 @@ import NavigationHeader from './NavigationHeader';
 import GroupedTaskList from './GroupedTaskList';
 import { formatDate, formatFullDate } from '../utils/dateUtils';
 import { startOfDay } from 'date-fns';
-import { groupTasksByTag } from '../utils/taskUtils';
 
 interface TomorrowViewProps {
   tasks: Task[];
@@ -35,9 +34,6 @@ export default function TomorrowView({ tasks, date, tagColors, onToggleComplete,
 
   const fullDateDisplay = formatFullDate(date);
   const isTomorrow = useMemo(() => formatDate(date) === formatDate(new Date(Date.now() + 86400000)), [date]);
-
-  // Memoize grouped tasks
-  const { grouped, sortedTags } = useMemo(() => groupTasksByTag(tasks), [tasks]);
 
   const toggleTagCollapse = (tag: string) => {
     setCollapsedTags(prev => {

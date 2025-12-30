@@ -1,4 +1,3 @@
-import React from 'react';
 import { Task, TaskUpdate, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { groupTasksByTag } from '../utils/taskUtils';

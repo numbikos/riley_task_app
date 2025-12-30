@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface NavigationHeaderProps {
   title: string;
   onPrev: () => void;
