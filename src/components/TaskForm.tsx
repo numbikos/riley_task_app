@@ -459,6 +459,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
             <input
               type="date"
               value={dueDate}
+              placeholder="MM/DD/YYYY"
               required
               onFocus={(e) => {
                 // On desktop, ensure the input can receive text input

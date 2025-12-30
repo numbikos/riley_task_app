@@ -590,7 +590,6 @@ body {
     height: 44px;
     font-size: 1rem;
   }
-  ...
 }
 
 .app-main {
@@ -1439,6 +1438,21 @@ form {
 .form-group input::placeholder,
 .form-group textarea::placeholder {
   color: var(--text-muted);
+}
+
+/* Style date input calendar icon to be white (custom overlay) */
+.form-group input[type="date"] {
+  color-scheme: dark !important;
+  padding-right: 2.75rem; /* leave room for the icon */
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='18' rx='2' ry='2'/><line x1='16' y1='2' x2='16' y2='6'/><line x1='8' y1='2' x2='8' y2='6'/><line x1='3' y1='10' x2='21' y2='10'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 18px 18px;
+  opacity: 1 !important;
+  cursor: pointer;
 }
 
 .form-group textarea {
