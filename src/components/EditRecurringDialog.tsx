@@ -1,20 +1,37 @@
 import { getDateDisplay } from '../utils/dateUtils';
+import { RecurrenceType } from '../types';
 
-interface DeleteRecurringDialogProps {
+interface EditRecurringDialogProps {
   taskTitle: string;
   taskDueDate: string | null;
-  onDeleteFuture: () => void;
-  onDeleteOpen: () => void;
+  oldRecurrence: RecurrenceType;
+  newRecurrence: RecurrenceType;
+  onThisAndFollowing: () => void;
+  onAll: () => void;
   onCancel: () => void;
 }
 
-export default function DeleteRecurringDialog({ 
+const getRecurrenceLabel = (recurrence: RecurrenceType): string => {
+  switch (recurrence) {
+    case 'daily': return 'Daily';
+    case 'weekly': return 'Weekly';
+    case 'monthly': return 'Monthly';
+    case 'quarterly': return 'Quarterly';
+    case 'yearly': return 'Annually';
+    case 'custom': return 'Custom';
+    default: return 'None';
+  }
+};
+
+export default function EditRecurringDialog({ 
   taskTitle,
   taskDueDate,
-  onDeleteFuture, 
-  onDeleteOpen, 
+  oldRecurrence,
+  newRecurrence,
+  onThisAndFollowing, 
+  onAll, 
   onCancel 
-}: DeleteRecurringDialogProps) {
+}: EditRecurringDialogProps) {
   return (
     <div 
       className="modal-overlay" 
@@ -39,7 +56,7 @@ export default function DeleteRecurringDialog({
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text'
           }}>
-            Delete Recurring Task
+            Change Recurrence
           </h2>
           <button 
             className="modal-close" 
@@ -51,7 +68,9 @@ export default function DeleteRecurringDialog({
 
         <div style={{ marginBottom: '1.5rem', color: 'var(--text-main)' }}>
           <p style={{ marginBottom: '0.75rem' }}>
-            Delete <strong style={{ color: 'var(--primary-hover)' }}>{taskTitle}</strong>
+            Change <strong style={{ color: 'var(--primary-hover)' }}>{taskTitle}</strong> from{' '}
+            <strong style={{ color: 'var(--danger)' }}>{getRecurrenceLabel(oldRecurrence)}</strong> to{' '}
+            <strong style={{ color: 'var(--success)' }}>{getRecurrenceLabel(newRecurrence)}</strong>
           </p>
           {taskDueDate && (
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0 }}>
@@ -62,7 +81,7 @@ export default function DeleteRecurringDialog({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <button
-            onClick={onDeleteFuture}
+            onClick={onThisAndFollowing}
             style={{
               padding: '1rem',
               background: 'var(--gradient-primary)',
@@ -88,19 +107,19 @@ export default function DeleteRecurringDialog({
             <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>This and Following Tasks</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
               {taskDueDate 
-                ? `Deletes incomplete tasks from ${getDateDisplay(taskDueDate)} onwards. Past completed tasks remain.`
-                : 'Deletes incomplete tasks from this task onwards. Past completed tasks remain.'}
+                ? `Changes frequency from ${getDateDisplay(taskDueDate)} onwards. Past completed tasks keep the old frequency.`
+                : 'Changes frequency from this task onwards. Past completed tasks keep the old frequency.'}
             </div>
           </button>
 
           <button
-            onClick={onDeleteOpen}
+            onClick={onAll}
             style={{
               padding: '1rem',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '2px solid rgba(239, 68, 68, 0.3)',
+              background: 'rgba(16, 185, 129, 0.1)',
+              border: '2px solid rgba(16, 185, 129, 0.3)',
               borderRadius: 'var(--radius-md)',
-              color: 'var(--danger)',
+              color: 'var(--success)',
               fontWeight: 600,
               cursor: 'pointer',
               fontSize: '1rem',
@@ -108,19 +127,19 @@ export default function DeleteRecurringDialog({
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
-              e.currentTarget.style.borderColor = 'var(--danger)';
+              e.currentTarget.style.background = 'rgba(16, 185, 129, 0.2)';
+              e.currentTarget.style.borderColor = 'var(--success)';
               e.currentTarget.style.transform = 'translateY(-2px)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
-              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+              e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.3)';
               e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>All Incomplete Tasks</div>
+            <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>All Tasks</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-              Deletes all incomplete tasks across the entire series. Completed tasks remain.
+              Regenerates the entire series with the new frequency, starting from the first task's date.
             </div>
           </button>
 

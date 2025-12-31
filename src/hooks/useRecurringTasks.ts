@@ -1,5 +1,5 @@
 import { Task, TaskUpdate } from '../types';
-import { generateId } from '../utils/supabaseStorage';
+import { generateId, deleteTasks } from '../utils/supabaseStorage';
 import { normalizeTags } from '../utils/taskOperations';
 import {
   createRecurringTaskInstances,
@@ -43,10 +43,12 @@ export const useRecurringTasks = (
 
   /**
    * Updates a recurring task, handling regeneration if needed
+   * @param editMode - 'all' regenerates from first instance, 'thisAndFollowing' regenerates from current instance
    */
   const updateRecurringTask = (
     id: string,
-    updates: TaskUpdate
+    updates: TaskUpdate,
+    editMode: 'all' | 'thisAndFollowing' = 'thisAndFollowing'
   ) => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
@@ -58,9 +60,10 @@ export const useRecurringTasks = (
     const recurrenceSettingsChanged = recurrenceChanged || multiplierChanged || customFreqChanged;
     
     // Check if this is the first instance in the recurrence group
-    const isFirstInstance = existingTask.recurrenceGroupId 
-      ? findFirstInstance(tasks, existingTask.recurrenceGroupId)?.id === existingTask.id
-      : true;
+    const firstInstance = existingTask.recurrenceGroupId 
+      ? findFirstInstance(tasks, existingTask.recurrenceGroupId)
+      : null;
+    const isFirstInstance = firstInstance?.id === existingTask.id || !firstInstance;
     
     const dueDateChanged = updates.dueDate !== undefined && updates.dueDate !== existingTask.dueDate;
     const isDragDrop = updates._dragDrop === true;
@@ -68,20 +71,46 @@ export const useRecurringTasks = (
     // Only regenerate if recurrence settings changed OR if editing the first instance's due date
     // BUT: Skip regeneration if this is a drag-and-drop operation
     if (!isDragDrop && recurrenceSettingsChanged && (updates.recurrence || existingTask.recurrence) && (updates.dueDate || existingTask.dueDate)) {
-      // Delete old recurring group if it exists
+      // Determine the start date based on editMode
+      let startDate: string;
       let tasksToRemove: Task[] = [];
-      if (existingTask.recurrenceGroupId) {
-        tasksToRemove = getTasksToRemoveForRegeneration(tasks, existingTask.recurrenceGroupId);
+      
+      if (editMode === 'all' && firstInstance) {
+        // "All tasks" - regenerate from the first instance's date
+        startDate = updates.dueDate || firstInstance.dueDate || existingTask.dueDate!;
+        // Remove ALL tasks in the group (including completed past ones)
+        tasksToRemove = tasks.filter(t => t.recurrenceGroupId === existingTask.recurrenceGroupId);
+        logger.debug(`[Recurring Task] Edit mode 'all': regenerating from first instance date ${startDate}`);
       } else {
-        tasksToRemove = [existingTask];
+        // "This and following" - regenerate from the current instance's date
+        startDate = updates.dueDate || existingTask.dueDate!;
+        // Only remove future/incomplete tasks
+        if (existingTask.recurrenceGroupId) {
+          tasksToRemove = getTasksToRemoveForRegeneration(tasks, existingTask.recurrenceGroupId);
+        } else {
+          tasksToRemove = [existingTask];
+        }
+        logger.debug(`[Recurring Task] Edit mode 'thisAndFollowing': regenerating from current date ${startDate}`);
       }
       
       const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
       const remainingTasks = tasks.filter(task => !taskIdsToRemove.has(task.id));
       
+      // Delete old tasks from database BEFORE creating new ones
+      // This prevents race conditions with real-time sync
+      const taskIdsToDelete = Array.from(taskIdsToRemove);
+      if (taskIdsToDelete.length > 0) {
+        logger.debug(`[Recurring Task] Deleting ${taskIdsToDelete.length} old tasks from database before regeneration`);
+        deleteTasks(taskIdsToDelete).catch(error => {
+          logger.error('[Recurring Task] Failed to delete old tasks from database:', error);
+        });
+      }
+      
       // Create new recurring occurrences
-      const recurrenceGroupId = generateId();
-      const dueDate = updates.dueDate || existingTask.dueDate;
+      // Keep the same recurrenceGroupId for 'thisAndFollowing' to maintain series continuity
+      const recurrenceGroupId = editMode === 'thisAndFollowing' && existingTask.recurrenceGroupId
+        ? existingTask.recurrenceGroupId
+        : generateId();
       const recurrence = updates.recurrence || existingTask.recurrence!;
       
       const newTasks = createRecurringTaskInstances(
@@ -91,7 +120,7 @@ export const useRecurringTasks = (
           recurrenceGroupId,
           createdAt: existingTask.createdAt, // Preserve original creation date
         },
-        dueDate!,
+        startDate,
         recurrence,
         50
       );
@@ -109,6 +138,16 @@ export const useRecurringTasks = (
       });
       const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
       const remainingTasks = tasks.filter(task => !taskIdsToRemove.has(task.id));
+      
+      // Delete old tasks from database BEFORE creating new ones
+      // This prevents race conditions with real-time sync
+      const taskIdsToDelete = Array.from(taskIdsToRemove);
+      if (taskIdsToDelete.length > 0) {
+        logger.debug(`[Recurring Task] Deleting ${taskIdsToDelete.length} old tasks from database before due date regeneration`);
+        deleteTasks(taskIdsToDelete).catch(error => {
+          logger.error('[Recurring Task] Failed to delete old tasks from database:', error);
+        });
+      }
       
       const newTasks = createRecurringTaskInstances(
         {

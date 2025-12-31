@@ -28,7 +28,9 @@ import TagManager from './components/TagManager';
 import UndoNotification from './components/UndoNotification';
 import CompletionUndoNotification from './components/CompletionUndoNotification';
 import DeleteRecurringDialog from './components/DeleteRecurringDialog';
+import EditRecurringDialog from './components/EditRecurringDialog';
 import Auth from './components/Auth';
+import { findFirstInstance } from './utils/recurringTaskHelpers';
 import './App.css';
 
 function App() {
@@ -85,6 +87,10 @@ function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [initialDueDate, setInitialDueDate] = useState<string | null>(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
+  const [pendingRecurrenceEdit, setPendingRecurrenceEdit] = useState<{
+    task: Task;
+    updates: TaskUpdate;
+  } | null>(null);
   const [showTagManager, setShowTagManager] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
@@ -139,7 +145,7 @@ function App() {
   }, [addRecurringTask, addTaskBase]);
 
   // Combined update task function (handles both recurring and non-recurring)
-  const updateTask = useCallback((id: string, updates: TaskUpdate) => {
+  const updateTask = useCallback((id: string, updates: TaskUpdate, editMode?: 'all' | 'thisAndFollowing') => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
 
@@ -155,7 +161,25 @@ function App() {
     }
 
     if (existingTask.recurrence || updates.recurrence) {
-      updateRecurringTask(id, updates);
+      // Check if recurrence settings are being changed
+      const recurrenceChanged = updates.recurrence !== undefined && updates.recurrence !== existingTask.recurrence;
+      const multiplierChanged = updates.recurrenceMultiplier !== undefined && updates.recurrenceMultiplier !== existingTask.recurrenceMultiplier;
+      const customFreqChanged = updates.customFrequency !== undefined && updates.customFrequency !== existingTask.customFrequency;
+      const recurrenceSettingsChanged = recurrenceChanged || multiplierChanged || customFreqChanged;
+      
+      // Check if this is the first instance
+      const firstInstance = existingTask.recurrenceGroupId 
+        ? findFirstInstance(tasks, existingTask.recurrenceGroupId)
+        : null;
+      const isFirstInstance = firstInstance?.id === existingTask.id || !firstInstance;
+      
+      // If recurrence settings changed on a non-first instance, show dialog (unless mode already specified)
+      if (recurrenceSettingsChanged && !isFirstInstance && !editMode) {
+        setPendingRecurrenceEdit({ task: existingTask, updates });
+        return;
+      }
+      
+      updateRecurringTask(id, updates, editMode || 'thisAndFollowing');
     } else {
       updateTaskBase(id, updates);
     }
@@ -225,6 +249,28 @@ function App() {
     setPendingDeleteTask(null);
     await performDelete(tasksToDelete, pendingDeleteTask);
   }, [pendingDeleteTask, tasks, performDelete]);
+
+  // Handle recurrence edit - "This and following"
+  const handleRecurrenceEditThisAndFollowing = useCallback(() => {
+    if (!pendingRecurrenceEdit) return;
+    const { task, updates } = pendingRecurrenceEdit;
+    setPendingRecurrenceEdit(null);
+    setShowTaskForm(false);
+    setEditingTask(null);
+    setInitialDueDate(null);
+    updateTask(task.id, updates, 'thisAndFollowing');
+  }, [pendingRecurrenceEdit, updateTask]);
+
+  // Handle recurrence edit - "All"
+  const handleRecurrenceEditAll = useCallback(() => {
+    if (!pendingRecurrenceEdit) return;
+    const { task, updates } = pendingRecurrenceEdit;
+    setPendingRecurrenceEdit(null);
+    setShowTaskForm(false);
+    setEditingTask(null);
+    setInitialDueDate(null);
+    updateTask(task.id, updates, 'all');
+  }, [pendingRecurrenceEdit, updateTask]);
 
   // Toggle task complete
   const toggleTaskComplete = useCallback((id: string) => {
@@ -671,6 +717,20 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
           onDeleteFuture={deleteFutureOccurrences}
           onDeleteOpen={deleteOpenOccurrences}
           onCancel={() => setPendingDeleteTask(null)}
+        />
+      )}
+
+      {pendingRecurrenceEdit && (
+        <EditRecurringDialog
+          taskTitle={pendingRecurrenceEdit.task.title}
+          taskDueDate={pendingRecurrenceEdit.task.dueDate}
+          oldRecurrence={pendingRecurrenceEdit.task.recurrence}
+          newRecurrence={pendingRecurrenceEdit.updates.recurrence || null}
+          onThisAndFollowing={handleRecurrenceEditThisAndFollowing}
+          onAll={handleRecurrenceEditAll}
+          onCancel={() => {
+            setPendingRecurrenceEdit(null);
+          }}
         />
       )}
 
