@@ -456,28 +456,30 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
 
           <div className="form-group">
             <label>Due Date <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <input
-              type="date"
-              value={dueDate}
-              placeholder="MM/DD/YYYY"
-              required
-              onFocus={(e) => {
-                // On desktop, ensure the input can receive text input
-                // Some browsers need explicit focus handling for date inputs
-                e.target.focus();
-              }}
-              onClick={(e) => {
-                // Ensure clicking anywhere in the input (including placeholder area) focuses it
-                e.currentTarget.focus();
-              }}
-              onChange={(e) => {
-                setDueDate(e.target.value);
-                // Clear recurrence if due date is removed
-                if (!e.target.value) {
-                  setRecurrence(null);
-                }
-              }}
-            />
+            <div className="date-input-wrapper">
+              <input
+                type="date"
+                value={dueDate}
+                placeholder="MM/DD/YYYY"
+                required
+                onFocus={(e) => {
+                  // On desktop, ensure the input can receive text input
+                  // Some browsers need explicit focus handling for date inputs
+                  e.target.focus();
+                }}
+                onClick={(e) => {
+                  // Ensure clicking anywhere in the input (including placeholder area) focuses it
+                  e.currentTarget.focus();
+                }}
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  // Clear recurrence if due date is removed
+                  if (!e.target.value) {
+                    setRecurrence(null);
+                  }
+                }}
+              />
+            </div>
           </div>
 
           <div className="form-group">
