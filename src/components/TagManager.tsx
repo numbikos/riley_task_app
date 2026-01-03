@@ -14,6 +14,8 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [editingColorForTag, setEditingColorForTag] = useState<string | null>(null);
+  const [editingTagName, setEditingTagName] = useState<string | null>(null);
+  const [editingTagInput, setEditingTagInput] = useState('');
   const [newTagInput, setNewTagInput] = useState('');
   const [showAddTagForm, setShowAddTagForm] = useState(false);
 
@@ -162,6 +164,95 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
     }
   };
 
+  const handleStartEditingTag = (tag: string) => {
+    setEditingTagName(tag);
+    setEditingTagInput(getTagDisplayName(tag));
+    setEditingColorForTag(null); // Close color picker if open
+  };
+
+  const handleCancelEditingTag = () => {
+    setEditingTagName(null);
+    setEditingTagInput('');
+  };
+
+  const handleRenameTag = async (oldTag: string) => {
+    const trimmedNewName = editingTagInput.trim();
+    if (!trimmedNewName) {
+      handleCancelEditingTag();
+      return;
+    }
+
+    const normalizedNewTag = trimmedNewName.toLowerCase();
+    const normalizedOldTag = oldTag.toLowerCase();
+
+    // If name hasn't changed, just cancel
+    if (normalizedNewTag === normalizedOldTag) {
+      handleCancelEditingTag();
+      return;
+    }
+
+    // Check if new tag name already exists
+    if (availableTags.some(tag => tag.toLowerCase() === normalizedNewTag)) {
+      alert(`Tag "${trimmedNewName}" already exists!`);
+      return;
+    }
+
+    try {
+      // Update tag in all tasks
+      const updatedTasks = tasks.map(task => ({
+        ...task,
+        tags: task.tags.map((tag: string) =>
+          tag.toLowerCase() === normalizedOldTag ? normalizedNewTag : tag
+        )
+      }));
+
+      // Update tag colors (transfer old color to new tag name)
+      const oldColor = tagColors[normalizedOldTag];
+      const updatedColors = { ...tagColors };
+
+      // Delete old tag color entry
+      delete updatedColors[normalizedOldTag];
+      await deleteTagColor(oldTag);
+
+      // Add new tag color entry (preserve the color if it existed)
+      if (oldColor) {
+        updatedColors[normalizedNewTag] = oldColor;
+      } else {
+        updatedColors[normalizedNewTag] = DEFAULT_TAG_COLORS[normalizedNewTag] || DEFAULT_TAG_COLORS.default;
+      }
+
+      await saveTagColors(updatedColors);
+      setTagColors(updatedColors);
+
+      // Notify parent component
+      if (onTagColorsChange) {
+        onTagColorsChange(updatedColors);
+      }
+
+      // Update tasks in database and parent state
+      onUpdateTasks(updatedTasks);
+
+      // Reload tags to ensure consistency
+      const reloadedTags = await loadTags();
+      setAvailableTags(reloadedTags.sort());
+
+      // Clear editing state
+      handleCancelEditingTag();
+    } catch (error) {
+      logger.error('[TagManager] Failed to rename tag:', error);
+      alert(`Failed to rename tag: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleEditTagKeyPress = (e: React.KeyboardEvent, tag: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleRenameTag(tag);
+    } else if (e.key === 'Escape') {
+      handleCancelEditingTag();
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content tag-manager-content" onClick={(e) => e.stopPropagation()}>
@@ -226,28 +317,44 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
               const tagColor = getTagColorValue(tag);
               const usageCount = getTagUsageCount(tag);
               const isEditingColor = editingColorForTag === tag;
+              const isEditingName = editingTagName === tag;
 
               return (
                 <div key={tag} className="tag-manager-item">
                   <div className="tag-manager-item-left">
-                    <div 
-                      className="tag-manager-tag-preview"
-                      style={{ 
-                        borderLeftColor: tagColor,
-                        borderLeftWidth: '4px',
-                        borderLeftStyle: 'solid'
-                      }}
-                    >
-                      <span 
-                        className="tag-manager-tag-name"
-                        style={{ color: tagColor }}
+                    {isEditingName ? (
+                      <div className="tag-manager-edit-form">
+                        <input
+                          type="text"
+                          className="tag-manager-edit-input"
+                          value={editingTagInput}
+                          onChange={(e) => setEditingTagInput(e.target.value)}
+                          onKeyDown={(e) => handleEditTagKeyPress(e, tag)}
+                          onBlur={() => handleRenameTag(tag)}
+                          autoFocus
+                          style={{ borderLeftColor: tagColor }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        className="tag-manager-tag-preview"
+                        style={{
+                          borderLeftColor: tagColor,
+                          borderLeftWidth: '4px',
+                          borderLeftStyle: 'solid'
+                        }}
                       >
-                        {displayName}
-                      </span>
-                      <span className="tag-manager-usage-count">
-                        ({usageCount} {usageCount === 1 ? 'task' : 'tasks'})
-                      </span>
-                    </div>
+                        <span
+                          className="tag-manager-tag-name"
+                          style={{ color: tagColor }}
+                        >
+                          {displayName}
+                        </span>
+                        <span className="tag-manager-usage-count">
+                          ({usageCount} {usageCount === 1 ? 'task' : 'tasks'})
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     {isEditingColor ? (
@@ -285,21 +392,31 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
                         </div>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        className="tag-manager-color-btn"
-                        onClick={() => setEditingColorForTag(tag)}
-                        title={`Change color for "${displayName}" tag`}
-                        style={{
-                          backgroundColor: tagColor,
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '4px',
-                          border: '2px solid rgba(255, 255, 255, 0.3)',
-                          cursor: 'pointer',
-                          padding: 0,
-                        }}
-                      />
+                      <>
+                        <button
+                          type="button"
+                          className="tag-manager-edit-btn"
+                          onClick={() => handleStartEditingTag(tag)}
+                          title={`Rename "${displayName}" tag`}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          className="tag-manager-color-btn"
+                          onClick={() => setEditingColorForTag(tag)}
+                          title={`Change color for "${displayName}" tag`}
+                          style={{
+                            backgroundColor: tagColor,
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '4px',
+                            border: '2px solid rgba(255, 255, 255, 0.3)',
+                            cursor: 'pointer',
+                            padding: 0,
+                          }}
+                        />
+                      </>
                     )}
                     <button
                       className="tag-manager-delete-btn"

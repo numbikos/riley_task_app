@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Task, Subtask, TaskUpdate, getTagColor, RecurrenceType } from '../types';
 import { generateId, loadTags, loadTagColors } from '../utils/supabaseStorage';
 import { formatDate } from '../utils/dateUtils';
@@ -30,6 +30,8 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
   const [customFrequency, setCustomFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'>('weekly');
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [isLoadingTags, setIsLoadingTags] = useState(true);
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Load available tags - they're stored lowercase, display with proper case
@@ -110,7 +112,32 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
     // Reset editing state when task changes
     setEditingSubtaskId(null);
     setEditingSubtaskText('');
+    setIsTagDropdownOpen(false);
   }, [task, initialDueDate]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      // Don't close if clicking inside the tag selector wrapper
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(target)) {
+        setIsTagDropdownOpen(false);
+      }
+    };
+
+    if (isTagDropdownOpen) {
+      // Use capture phase and a small delay to ensure toggle button click is processed first
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside, true);
+        document.addEventListener('touchstart', handleClickOutside, true);
+      }, 0);
+
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside, true);
+        document.removeEventListener('touchstart', handleClickOutside, true);
+      };
+    }
+  }, [isTagDropdownOpen]);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();
@@ -593,90 +620,146 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
 
           <div className="form-group">
             <label>Tags</label>
-            <div className="tag-input">
-              {tags.map(tag => {
-                const displayName = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-                return (
-                  <span key={tag} className="tag-chip">
-                    {displayName}
-                    <button type="button" onClick={handleRemoveTag}>×</button>
-                  </span>
-                );
-              })}
-              <input
-                type="text"
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-                placeholder="Add tag..."
-              />
-            </div>
-            {isLoadingTags ? (
-              <div className="tag-suggestions" style={{ padding: '0.75rem', color: '#888', fontSize: '0.85rem' }}>
-                Loading tags...
-              </div>
-            ) : availableTags.length > 0 ? (
-              <div className="tag-suggestions">
-                <div className="tag-suggestions-label">Available tags:</div>
-                <div className="tag-suggestions-list">
-                  {availableTags
-                    .filter(tag => tag.toLowerCase().includes(tagInput.toLowerCase()))
-                    .map(tag => {
-                      const tagColor = getTagColor(tag, tagColors);
-                      const displayName = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          className="tag-suggestion-btn"
-                          style={{
-                            borderColor: tagColor,
-                            color: tagColor
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = tagColor;
-                            e.currentTarget.style.color = '#0A0A0A';
-                            e.currentTarget.style.borderColor = 'transparent';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                            e.currentTarget.style.color = tagColor;
-                            e.currentTarget.style.borderColor = tagColor;
-                          }}
-                          onClick={() => {
-                            // Replace existing tag with selected one (store lowercase)
-                            setTags([tag.toLowerCase()]);
-                            setTagInput('');
-                          }}
-                        >
-                          {displayName}
-                        </button>
-                      );
-                    })}
-                  {tagInput && !availableTags.some(t => t.toLowerCase() === tagInput.toLowerCase()) && (
+            <div className="tag-selector-wrapper" ref={tagDropdownRef}>
+              <div
+                className="tag-select-button"
+                onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
+              >
+                {tags.length > 0 ? (
+                  <div className="tag-select-current">
+                    <span
+                      className="tag-select-color-dot"
+                      style={{ backgroundColor: getTagColor(tags[0], tagColors) }}
+                    />
+                    <span className="tag-select-label">
+                      {tags[0].charAt(0).toUpperCase() + tags[0].slice(1).toLowerCase()}
+                    </span>
                     <button
                       type="button"
-                      className="tag-suggestion-btn tag-suggestion-btn-new"
-                      onClick={() => {
-                        // handleAddTag already has the confirmation logic for new tags
-                        handleAddTag();
+                      className="tag-select-clear"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveTag();
                       }}
+                      aria-label="Clear tag"
                     >
-                      + Create "{tagInput}"
+                      ×
                     </button>
-                  )}
+                  </div>
+                ) : (
+                  <span className="tag-select-placeholder">Add tag...</span>
+                )}
+                <svg
+                  className="tag-select-chevron"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polyline points={isTagDropdownOpen ? "18 15 12 9 6 15" : "6 9 12 15 18 9"} />
+                </svg>
+              </div>
+
+              {isTagDropdownOpen && (
+                <div className="tag-dropdown">
+                  <div className="tag-dropdown-search">
+                    <input
+                      type="text"
+                      value={tagInput}
+                      onChange={(e) => setTagInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && tagInput.trim()) {
+                          e.preventDefault();
+                          handleAddTag();
+                          setIsTagDropdownOpen(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          setIsTagDropdownOpen(false);
+                        }
+                      }}
+                      placeholder="Search or create tag..."
+                      autoFocus
+                    />
+                  </div>
+                  <div className="tag-dropdown-list">
+                    {isLoadingTags ? (
+                      <div className="tag-dropdown-item tag-dropdown-loading">
+                        Loading tags...
+                      </div>
+                    ) : (
+                      <>
+                        {availableTags.length > 0 && availableTags
+                          .filter(tag => {
+                            if (!tagInput) return true;
+                            const normalizedInput = tagInput.toLowerCase();
+                            const normalizedTag = tag.toLowerCase();
+                            return normalizedTag.includes(normalizedInput);
+                          })
+                          .map(tag => {
+                            const tagColor = getTagColor(tag, tagColors);
+                            const displayName = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
+                            const isSelected = tags.some(t => t.toLowerCase() === tag.toLowerCase());
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                className={`tag-dropdown-item ${isSelected ? 'selected' : ''}`}
+                                onClick={() => {
+                                  setTags([tag.toLowerCase()]);
+                                  setTagInput('');
+                                  setIsTagDropdownOpen(false);
+                                }}
+                              >
+                                <span className="tag-dropdown-color-indicator" style={{ backgroundColor: tagColor }} />
+                                <span className="tag-dropdown-name" style={{ color: tagColor }}>
+                                  {displayName}
+                                </span>
+                                {isSelected && (
+                                  <span className="tag-dropdown-check">✓</span>
+                                )}
+                              </button>
+                            );
+                          })}
+
+                        {tagInput && !availableTags.some(t => t.toLowerCase() === tagInput.toLowerCase()) && (
+                          <button
+                            type="button"
+                            className="tag-dropdown-item tag-dropdown-item-new"
+                            onClick={() => {
+                              handleAddTag();
+                              setIsTagDropdownOpen(false);
+                            }}
+                          >
+                            <span className="tag-dropdown-icon">+</span>
+                            <span className="tag-dropdown-name">Create "{tagInput}"</span>
+                          </button>
+                        )}
+
+                        {availableTags.length === 0 && (
+                          <div className="tag-dropdown-item tag-dropdown-empty">
+                            No tags yet. Type a name and press Enter to create your first tag.
+                          </div>
+                        )}
+
+                        {availableTags.length > 0 && tagInput && availableTags.filter(tag => {
+                          const normalizedInput = tagInput.toLowerCase();
+                          const normalizedTag = tag.toLowerCase();
+                          return normalizedTag.includes(normalizedInput);
+                        }).length === 0 && !availableTags.some(t => t.toLowerCase() === tagInput.toLowerCase()) && (
+                          <div className="tag-dropdown-item tag-dropdown-empty">
+                            No matching tags found.
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="tag-suggestions" style={{ padding: '0.75rem', color: '#888', fontSize: '0.85rem' }}>
-                No tags available. Type a tag name and press Enter to create one.
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="form-group">
