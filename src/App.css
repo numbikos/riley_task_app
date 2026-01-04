@@ -1883,6 +1883,7 @@ form {
   z-index: 1000;
   animation: menuFadeIn 0.2s ease-out;
   overflow: visible;
+  max-height: calc(100vh - 400px);
 }
 
 .tag-dropdown-search {
@@ -1919,6 +1920,17 @@ form {
   scrollbar-width: thin;
   scrollbar-color: var(--primary) var(--bg-main);
   min-height: 60px;
+}
+
+/* Mobile: Reduce dropdown height to prevent overflow */
+@media (max-width: 768px) {
+  .tag-dropdown {
+    max-height: 300px;
+  }
+
+  .tag-dropdown-list {
+    max-height: 180px;
+  }
 }
 
 .tag-dropdown-list::-webkit-scrollbar {

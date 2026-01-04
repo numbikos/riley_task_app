@@ -30,9 +30,19 @@ export const clearAuthCache = async () => {
     await supabase.auth.signOut();
     if (typeof window !== 'undefined') {
       // Clear any cached auth data
+      // Supabase stores auth data with specific key patterns:
+      // - sb-<project-ref>-auth-token (access/refresh tokens)
+      // - supabase.auth.token (legacy)
       const keys = Object.keys(localStorage);
+      const supabaseAuthKeyPattern = /^sb-[a-z0-9]+-auth-token$/;
+
       keys.forEach(key => {
-        if (key.startsWith('sb-') || key.includes('supabase')) {
+        // Match exact Supabase auth key patterns only
+        if (
+          supabaseAuthKeyPattern.test(key) ||
+          key === 'supabase.auth.token' ||
+          key.startsWith(`sb-${supabaseUrl?.split('//')[1]?.split('.')[0]}-`)
+        ) {
           localStorage.removeItem(key);
         }
       });

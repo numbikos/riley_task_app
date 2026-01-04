@@ -11,7 +11,7 @@ export default defineConfig({
   base: process.env.GITHUB_PAGES ? '/riley_task_app/' : '/',
   server: {
     port: 5181,
-    host: true, // Expose server to network
+    host: 'localhost', // Restrict to localhost only for security
   },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageJson.version),

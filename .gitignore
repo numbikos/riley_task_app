@@ -53,6 +53,8 @@ Thumbs.db
 *.temp
 .cache
 
-# Review and assessment documents
-COMPREHENSIVE_CODE_REVIEW.md
-SECURITY_REPORT.md
+#Supabase Schema
+Supabase Schema/*
+
+#Recommendations
+Recommendations/*
