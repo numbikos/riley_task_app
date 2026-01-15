@@ -23,7 +23,7 @@ export interface Task {
   autoRenew?: boolean; // If true, automatically create next 50 instances when last instance is completed
 }
 
-export type ViewType = 'today' | 'tomorrow' | 'week' | 'all' | 'completed' | 'day';
+export type ViewType = 'today' | 'tomorrow' | 'week' | 'all' | 'completed' | 'day' | 'stats';
 
 /**
  * Internal flags used for task updates (not persisted to database)

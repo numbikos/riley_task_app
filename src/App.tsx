@@ -21,6 +21,7 @@ import DayView from './components/DayView';
 import WeekView from './components/WeekView';
 import AllTasksView from './components/AllTasksView';
 import CompletedView from './components/CompletedView';
+import StatsView from './components/StatsView';
 import GlobalSearch from './components/GlobalSearch';
 import TaskForm from './components/TaskForm';
 import TagManager from './components/TagManager';
@@ -435,6 +436,11 @@ function App() {
           totalCount={completedTasksTotal}
           loadError={completedTasksLoadError}
         />;
+      case 'stats':
+        return <StatsView
+          tasks={tasks}
+          tagColors={tagColors}
+        />;
       default:
         return null;
     }
@@ -543,11 +549,17 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
             >
               All Tasks
             </button>
-            <button 
+            <button
               className={`nav-tab ${currentView === 'completed' ? 'active' : ''}`}
               onClick={() => { setCurrentView('completed'); setSearchQuery(''); }}
             >
               Completed
+            </button>
+            <button
+              className={`nav-tab ${currentView === 'stats' ? 'active' : ''}`}
+              onClick={() => { setCurrentView('stats'); setSearchQuery(''); }}
+            >
+              Stats
             </button>
           </nav>
         </div>
@@ -664,12 +676,19 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
             <span className="nav-icon">✅</span>
             <span className="nav-label">Done</span>
           </button>
-          <button 
-            className={currentView === 'all' ? 'active' : ''} 
+          <button
+            className={currentView === 'all' ? 'active' : ''}
             onClick={() => { setCurrentView('all'); setSearchQuery(''); }}
           >
             <span className="nav-icon">📁</span>
             <span className="nav-label">All</span>
+          </button>
+          <button
+            className={currentView === 'stats' ? 'active' : ''}
+            onClick={() => { setCurrentView('stats'); setSearchQuery(''); }}
+          >
+            <span className="nav-icon">📊</span>
+            <span className="nav-label">Stats</span>
           </button>
         </nav>
       )}
