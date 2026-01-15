@@ -406,7 +406,7 @@ function App() {
           onToggleComplete={toggleTaskComplete}
           onEdit={handleEdit}
           onUpdateTask={updateTask}
-          onNavigateToDay={(date, weekDate) => { setSelectedDayDate(date); setWeekViewDate(weekDate); setCurrentView('day'); setSearchQuery(''); }}
+          onNavigateToDay={(date, weekDate) => { setSelectedDayDate(date); setWeekViewDate(weekDate); setCurrentView('day', { dayDate: date }); setSearchQuery(''); }}
           onAddTask={handleAddTask}
           onWeekDateChange={setWeekViewDate}
         />;
