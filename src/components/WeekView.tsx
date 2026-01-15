@@ -13,9 +13,10 @@ interface WeekViewProps {
   onNavigateToDay?: (date: Date, weekDate: Date) => void;
   initialWeekDate?: Date | null;
   onAddTask?: (date: Date) => void;
+  onWeekDateChange?: (date: Date) => void;
 }
 
-export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, onUpdateTask, onNavigateToDay, initialWeekDate, onAddTask }: WeekViewProps) {
+export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, onUpdateTask, onNavigateToDay, initialWeekDate, onAddTask, onWeekDateChange }: WeekViewProps) {
   const [currentWeekDate, setCurrentWeekDate] = useState(() => {
     // Use initialWeekDate if provided, otherwise use today
     if (initialWeekDate) {
@@ -65,33 +66,43 @@ export default function WeekView({ tasks, tagColors, onToggleComplete, onEdit, o
   const handleTouchEnd = () => {
     // Don't process swipe if we're dragging
     if (isDragging || !touchStart || !touchEnd) return;
-    
+
     const distance = touchStart - touchEnd;
     const isLeftSwipe = distance > minSwipeDistance;
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe) {
-      setCurrentWeekDate(addDays(currentWeekDate, 5));
+      const newDate = addDays(currentWeekDate, 5);
+      setCurrentWeekDate(newDate);
+      onWeekDateChange?.(newDate);
     } else if (isRightSwipe) {
-      setCurrentWeekDate(subDays(currentWeekDate, 5));
+      const newDate = subDays(currentWeekDate, 5);
+      setCurrentWeekDate(newDate);
+      onWeekDateChange?.(newDate);
     }
-    
+
     // Reset touch state
     setTouchStart(null);
     setTouchEnd(null);
   };
 
   const goToPreviousWeek = () => {
-    setCurrentWeekDate(subDays(currentWeekDate, 5));
+    const newDate = subDays(currentWeekDate, 5);
+    setCurrentWeekDate(newDate);
+    onWeekDateChange?.(newDate);
   };
 
   const goToNextWeek = () => {
-    setCurrentWeekDate(addDays(currentWeekDate, 5));
+    const newDate = addDays(currentWeekDate, 5);
+    setCurrentWeekDate(newDate);
+    onWeekDateChange?.(newDate);
   };
 
   const goToToday = () => {
     // Use local timezone - normalize to start of day
-    setCurrentWeekDate(startOfDay(new Date()));
+    const newDate = startOfDay(new Date());
+    setCurrentWeekDate(newDate);
+    onWeekDateChange?.(newDate);
   };
 
   const getTasksForDate = (date: Date) => {

@@ -3,6 +3,7 @@ import { Task, Subtask, TaskUpdate, getTagColor, RecurrenceType } from '../types
 import { generateId, loadTags, loadTagColors } from '../utils/supabaseStorage';
 import { formatDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
+import { Trash2 } from 'lucide-react';
 
 interface TaskFormProps {
   task: Task | null;
@@ -482,7 +483,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
         <form onSubmit={handleSubmit}>
 
           <div className="form-group">
-            <label>Due Date <span style={{ color: 'var(--danger)' }}>*</span></label>
+            <label>Due Date <span className="required-indicator">*</span></label>
             <div className="date-input-wrapper">
               <input
                 type="date"
@@ -537,9 +538,9 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
               
               {dueDate && recurrence === 'custom' && (
                 <div className="custom-recurrence-options">
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'stretch' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: '0 0 auto' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Number</label>
+                  <div className="custom-recurrence-row">
+                    <div className="custom-recurrence-field custom-recurrence-field--number">
+                      <label className="custom-recurrence-label">Number</label>
                       <input
                         type="number"
                         min="1"
@@ -569,13 +570,13 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                         }}
                       />
                       {recurrenceMultiplierError && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: '0.25rem' }}>
+                        <div className="form-error-message">
                           {recurrenceMultiplierError}
                         </div>
                       )}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: '1 1 auto' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Frequency</label>
+                    <div className="custom-recurrence-field custom-recurrence-field--frequency">
+                      <label className="custom-recurrence-label">Frequency</label>
                       <select
                         value={customFrequency}
                         className="custom-frequency-select"
@@ -589,14 +590,14 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                       </select>
                     </div>
                   </div>
-                  <div style={{ marginTop: '1rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                  <div className="custom-recurrence-preview">
                     Will create 50 instances: Every {recurrenceMultiplier} {customFrequency === 'quarterly' ? 'quarters' : customFrequency === 'yearly' ? 'years' : customFrequency + 's'}
                   </div>
                 </div>
               )}
 
               {task && task.recurrenceGroupId && onExtendRecurring && (
-                <div style={{ marginTop: '1rem' }}>
+                <div className="extend-recurring-section">
                   <button
                     type="button"
                     className="btn btn-secondary btn-small"
@@ -813,22 +814,20 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                         autoFocus
                       />
                     ) : (
-                      <span 
-                        className="subtask-text" 
+                      <span
+                        className="subtask-text subtask-text--editable"
                         onClick={() => handleStartEditingSubtask(subtask)}
-                        style={{ cursor: 'pointer', flex: 1 }}
                       >
                         {subtask.text}
                       </span>
                     )}
                     <button
                       type="button"
-                      className="task-action-btn delete"
+                      className="task-action-btn delete subtask-delete-btn"
                       onClick={() => handleRemoveSubtask(subtask.id)}
-                      style={{ marginLeft: 'auto' }}
                       title="Delete subtask"
                     >
-                      🗑️
+                      <Trash2 className="icon-sm" />
                     </button>
                   </div>
                 ))}

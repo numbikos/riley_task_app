@@ -1,7 +1,20 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Task } from '../types';
-import { filterTasksBySearch } from '../utils/taskOperations';
-import { formatDateLong } from '../utils/dateUtils';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+import { Task, ViewType } from '../types';
+import {
+  filterTasksBySearch,
+  getTodayTasks,
+  getTomorrowTasks,
+  getDayTasks,
+  getCompletedTasks,
+} from '../utils/taskOperations';
+import {
+  formatDateLong,
+  formatDate,
+  isDateToday,
+  isDateTomorrow,
+  isDateOverdue,
+  getNext5Days,
+} from '../utils/dateUtils';
 
 interface GlobalSearchProps {
   tasks: Task[];
@@ -9,6 +22,13 @@ interface GlobalSearchProps {
   onSelectTask: (task: Task) => void;
   query: string;
   setQuery: (query: string) => void;
+  currentView: ViewType;
+  todayViewDate: Date;
+  tomorrowViewDate: Date;
+  selectedDayDate: Date | null;
+  weekViewDate: Date | null;
+  hasMoreCompletedTasks?: boolean;
+  onLoadMoreCompleted?: () => void;
 }
 
 interface SearchResult {
@@ -16,36 +36,77 @@ interface SearchResult {
   otherInstances: Task[];
 }
 
-export const GlobalSearch: React.FC<GlobalSearchProps> = ({ 
-  tasks, 
-  tagColors, 
+export default function GlobalSearch({
+  tasks,
+  tagColors,
   onSelectTask,
   query,
-  setQuery
-}) => {
+  setQuery,
+  currentView,
+  todayViewDate,
+  tomorrowViewDate,
+  selectedDayDate,
+  weekViewDate,
+  hasMoreCompletedTasks,
+  onLoadMoreCompleted,
+}: GlobalSearchProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Filter only incomplete tasks for the dropdown as requested
+  // Get view-scoped tasks based on current view
+  const viewScopedTasks = useMemo((): Task[] => {
+    switch (currentView) {
+      case 'completed':
+        return getCompletedTasks(tasks);
+      case 'today':
+        return getTodayTasks(tasks, todayViewDate, isDateToday, isDateOverdue, formatDate);
+      case 'tomorrow':
+        return getTomorrowTasks(tasks, tomorrowViewDate, isDateTomorrow, formatDate);
+      case 'day':
+        return selectedDayDate
+          ? getDayTasks(tasks, selectedDayDate, formatDate)
+          : [];
+      case 'week': {
+        // Filter to 5-day window starting from weekViewDate
+        const weekStart = weekViewDate || new Date();
+        const weekDates = getNext5Days(weekStart);
+        const weekDateStrings = weekDates.map(d => formatDate(d));
+        return tasks.filter(t => {
+          if (t.completed || !t.dueDate) return false;
+          const taskDate = t.dueDate.split('T')[0];
+          return weekDateStrings.includes(taskDate);
+        });
+      }
+      case 'all':
+      default:
+        return tasks.filter(t => !t.completed);
+    }
+  }, [tasks, currentView, todayViewDate, tomorrowViewDate, selectedDayDate, weekViewDate]);
+
+  // Filter and group search results
   const searchResults = useMemo((): SearchResult[] => {
     if (!query.trim()) return [];
 
-    // 1. Get all incomplete tasks
-    const activeTasks = tasks.filter(t => !t.completed);
+    // 1. Filter view-scoped tasks by search query
+    const searchedTasks = filterTasksBySearch(viewScopedTasks, query);
 
-    // 2. Filter by search query
-    const searchedTasks = filterTasksBySearch(activeTasks, query);
-
-    // 3. Sort by due date (earliest first)
+    // 2. Sort by due date (earliest first) for non-completed, by lastModified for completed
     const sortedTasks = [...searchedTasks].sort((a, b) => {
+      if (currentView === 'completed') {
+        // Sort completed by lastModified (most recent first)
+        const aDate = a.lastModified || '';
+        const bDate = b.lastModified || '';
+        return bDate.localeCompare(aDate);
+      }
+      // Sort by due date (earliest first)
       if (!a.dueDate) return 1;
       if (!b.dueDate) return -1;
       return a.dueDate.localeCompare(b.dueDate);
     });
 
-    // 4. Group recurring tasks
+    // 3. Group recurring tasks
     const groups = new Map<string, SearchResult>();
     const standaloneResults: SearchResult[] = [];
 
@@ -64,7 +125,25 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     }
 
     return standaloneResults.slice(0, 8);
-  }, [tasks, query]);
+  }, [viewScopedTasks, query, currentView]);
+
+  // Dynamic placeholder text based on current view
+  const placeholderText = useMemo(() => {
+    switch (currentView) {
+      case 'completed': return 'Search completed tasks...';
+      case 'today': return "Search today's tasks...";
+      case 'tomorrow': return "Search tomorrow's tasks...";
+      case 'day': return 'Search day tasks...';
+      case 'week': return 'Search visible tasks...';
+      case 'all':
+      default: return 'Search all tasks...';
+    }
+  }, [currentView]);
+
+  // Dynamic no-results message based on current view
+  const noResultsText = currentView === 'completed'
+    ? 'No completed tasks found'
+    : 'No tasks found';
 
   // Flatten results for keyboard navigation (main task + expanded instances)
   const flatResults = useMemo(() => {
@@ -128,7 +207,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         <input
           type="text"
           className="header-search-input"
-          placeholder="Search all tasks..."
+          placeholder={placeholderText}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -159,7 +238,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
               const isExpanded = expandedGroupId === mainTask.recurrenceGroupId && mainTask.recurrenceGroupId;
               
               return (
-                <React.Fragment key={mainTask.id}>
+                <Fragment key={mainTask.id}>
                   <div
                     className={`search-result-item ${flatResults.findIndex(f => f.task.id === mainTask.id) === activeIndex ? 'active' : ''}`}
                     onClick={() => handleSelect(mainTask)}
@@ -224,15 +303,23 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
                       </div>
                     </div>
                   ))}
-                </React.Fragment>
+                </Fragment>
               );
             })
           ) : (
-            <div className="search-no-results">No active tasks found</div>
+            <div className="search-no-results">{noResultsText}</div>
+          )}
+          {currentView === 'completed' && hasMoreCompletedTasks && (
+            <button
+              className="search-load-more-btn"
+              onClick={() => onLoadMoreCompleted?.()}
+            >
+              Load more completed tasks to search
+            </button>
           )}
         </div>
       )}
     </div>
   );
-};
+}
 

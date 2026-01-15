@@ -2,7 +2,7 @@ import { Task, RecurrenceType } from '../types';
 import { generateRecurringDates, formatDate } from './dateUtils';
 import { generateId } from './supabaseStorage';
 
-const RECURRING_INSTANCE_COUNT = 50;
+const RECURRING_INSTANCE_COUNT = 10;
 
 /**
  * Normalizes tags to lowercase
@@ -16,7 +16,7 @@ const normalizeTags = (tags: string[]): string[] => {
  * @param taskData Partial task data to use as template
  * @param startDate Starting date for the recurrence
  * @param recurrence Recurrence type
- * @param count Number of instances to create (default: 50)
+ * @param count Number of instances to create (default: 10)
  * @returns Array of Task instances
  */
 export const createRecurringTaskInstances = (

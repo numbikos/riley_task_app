@@ -9,7 +9,6 @@ import { useTaskManagement } from './hooks/useTaskManagement';
 import { useRecurringTasks } from './hooks/useRecurringTasks';
 import { logger } from './utils/logger';
 import {
-  filterTasksBySearch,
   getTodayTasks,
   getTomorrowTasks,
   getDayTasks,
@@ -22,7 +21,7 @@ import DayView from './components/DayView';
 import WeekView from './components/WeekView';
 import AllTasksView from './components/AllTasksView';
 import CompletedView from './components/CompletedView';
-import { GlobalSearch } from './components/GlobalSearch';
+import GlobalSearch from './components/GlobalSearch';
 import TaskForm from './components/TaskForm';
 import TagManager from './components/TagManager';
 import UndoNotification from './components/UndoNotification';
@@ -71,6 +70,13 @@ function App() {
     migrationNotification,
     setMigrationNotification,
     trackRecentUpdate,
+    // Progressive loading for completed tasks
+    loadMoreCompletedTasks,
+    hasMoreCompletedTasks,
+    isLoadingCompletedTasks,
+    completedTasksLoaded,
+    completedTasksTotal,
+    completedTasksLoadError,
   } = useTaskManagement(user);
 
   // Recurring tasks
@@ -354,73 +360,80 @@ function App() {
   const renderView = () => {
     switch (currentView) {
       case 'today':
-        return <TodayView 
-          tasks={filterTasksBySearch(getTodayTasksFiltered(todayViewDate), searchQuery)} 
+        return <TodayView
+          tasks={getTodayTasksFiltered(todayViewDate)}
           date={todayViewDate}
           tagColors={tagColors}
-          onToggleComplete={toggleTaskComplete} 
-          onEdit={handleEdit} 
-          onDelete={deleteTask} 
+          onToggleComplete={toggleTaskComplete}
+          onEdit={handleEdit}
+          onDelete={deleteTask}
           onUpdateTask={updateTask}
           onNavigateDate={(date) => setTodayViewDate(date)}
           onAddTask={handleAddTask}
         />;
       case 'tomorrow':
-        return <TomorrowView 
-          tasks={filterTasksBySearch(getTomorrowTasksFiltered(tomorrowViewDate), searchQuery)} 
+        return <TomorrowView
+          tasks={getTomorrowTasksFiltered(tomorrowViewDate)}
           date={tomorrowViewDate}
           tagColors={tagColors}
-          onToggleComplete={toggleTaskComplete} 
-          onEdit={handleEdit} 
-          onDelete={deleteTask} 
+          onToggleComplete={toggleTaskComplete}
+          onEdit={handleEdit}
+          onDelete={deleteTask}
           onUpdateTask={updateTask}
           onNavigateDate={(date) => setTomorrowViewDate(date)}
           onAddTask={handleAddTask}
         />;
       case 'day':
         if (!selectedDayDate) return null;
-        return <DayView 
-          tasks={filterTasksBySearch(getDayTasksFiltered(selectedDayDate), searchQuery)} 
+        return <DayView
+          tasks={getDayTasksFiltered(selectedDayDate)}
           date={selectedDayDate}
           tagColors={tagColors}
-          onToggleComplete={toggleTaskComplete} 
-          onEdit={handleEdit} 
-          onDelete={deleteTask} 
-          onUpdateTask={updateTask} 
+          onToggleComplete={toggleTaskComplete}
+          onEdit={handleEdit}
+          onDelete={deleteTask}
+          onUpdateTask={updateTask}
           onBackToWeek={() => { setCurrentView('week'); setSearchQuery(''); }}
           onNavigateDate={(date) => setSelectedDayDate(date)}
           onAddTask={handleAddTask}
         />;
       case 'week':
-        return <WeekView 
-          tasks={getWeekTasksFiltered()} 
+        return <WeekView
+          tasks={getWeekTasksFiltered()}
           initialWeekDate={weekViewDate}
           tagColors={tagColors}
-          onToggleComplete={toggleTaskComplete} 
-          onEdit={handleEdit} 
-          onUpdateTask={updateTask} 
-          onNavigateToDay={(date, weekDate) => { setSelectedDayDate(date); setWeekViewDate(weekDate); setCurrentView('day'); setSearchQuery(''); }} 
-          onAddTask={handleAddTask} 
+          onToggleComplete={toggleTaskComplete}
+          onEdit={handleEdit}
+          onUpdateTask={updateTask}
+          onNavigateToDay={(date, weekDate) => { setSelectedDayDate(date); setWeekViewDate(weekDate); setCurrentView('day'); setSearchQuery(''); }}
+          onAddTask={handleAddTask}
+          onWeekDateChange={setWeekViewDate}
         />;
       case 'all':
-        return <AllTasksView 
-          tasks={filterTasksBySearch(tasks.filter(t => !t.completed), searchQuery)} 
+        return <AllTasksView
+          tasks={tasks.filter(t => !t.completed)}
           tagColors={tagColors}
-          onToggleComplete={toggleTaskComplete} 
-          onEdit={handleEdit} 
+          onToggleComplete={toggleTaskComplete}
+          onEdit={handleEdit}
           onDelete={deleteTask}
           onDeleteGroup={deleteGroup}
           onUpdateTask={updateTask}
           onAddTask={handleAddTask}
         />;
       case 'completed':
-        return <CompletedView 
-          tasks={filterTasksBySearch(getCompletedTasksFiltered(), searchQuery)} 
+        return <CompletedView
+          tasks={getCompletedTasksFiltered()}
           tagColors={tagColors}
-          onToggleComplete={toggleTaskComplete} 
-          onEdit={handleEdit} 
-          onDelete={deleteTask} 
-          onUpdateTask={updateTask} 
+          onToggleComplete={toggleTaskComplete}
+          onEdit={handleEdit}
+          onDelete={deleteTask}
+          onUpdateTask={updateTask}
+          hasMore={hasMoreCompletedTasks}
+          isLoadingMore={isLoadingCompletedTasks}
+          onLoadMore={loadMoreCompletedTasks}
+          loadedCount={completedTasksLoaded}
+          totalCount={completedTasksTotal}
+          loadError={completedTasksLoadError}
         />;
       default:
         return null;
@@ -539,12 +552,19 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
           </nav>
         </div>
 
-        <GlobalSearch 
+        <GlobalSearch
           tasks={tasks}
           tagColors={tagColors}
           onSelectTask={handleEdit}
           query={searchQuery}
           setQuery={setSearchQuery}
+          currentView={currentView}
+          todayViewDate={todayViewDate}
+          tomorrowViewDate={tomorrowViewDate}
+          selectedDayDate={selectedDayDate}
+          weekViewDate={weekViewDate}
+          hasMoreCompletedTasks={hasMoreCompletedTasks}
+          onLoadMoreCompleted={loadMoreCompletedTasks}
         />
 
         <div className="header-right">

@@ -103,6 +103,116 @@ const taskToDbTask = (task: Task, userId: string, idMap?: Map<string, string>): 
   };
 };
 
+// Internal pagination batch size for loading large datasets
+const INTERNAL_PAGE_SIZE = 1000;
+
+/**
+ * Load all incomplete tasks with internal pagination to avoid max-rows cap.
+ * Transparent to caller - always returns complete array of incomplete tasks.
+ */
+export const loadIncompleteTasks = async (): Promise<Task[]> => {
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      logger.error('[loadIncompleteTasks] Auth error:', authError);
+      return [];
+    }
+    if (!user) {
+      logger.debug('[loadIncompleteTasks] No user authenticated');
+      return [];
+    }
+
+    logger.debug(`[loadIncompleteTasks] Fetching incomplete tasks for user: ${user.id}`);
+
+    const allTasks: Task[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    // Paginate internally to avoid max-rows cap
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('completed', false)
+        .order('created_at', { ascending: true })
+        .range(offset, offset + INTERNAL_PAGE_SIZE - 1);
+
+      if (error) {
+        logger.error('[loadIncompleteTasks] Failed to load tasks:', error);
+        return allTasks; // Return what we have so far
+      }
+
+      if (!data || data.length === 0) {
+        // No more data - stop pagination
+        hasMore = false;
+      } else {
+        const convertedTasks = data.map((task: DatabaseTask) => dbTaskToTask(task));
+        allTasks.push(...convertedTasks);
+        // Use the actual number of rows returned to advance offset
+        // This handles cases where Supabase max-rows < INTERNAL_PAGE_SIZE
+        offset += data.length;
+        // Continue pagination as long as we received data
+        // Only stop when we get an empty result (handled above)
+        hasMore = data.length > 0;
+      }
+    }
+
+    logger.debug(`[loadIncompleteTasks] Loaded ${allTasks.length} incomplete tasks`);
+    return allTasks;
+  } catch (error) {
+    logger.error('[loadIncompleteTasks] Exception:', error);
+    return [];
+  }
+};
+
+/**
+ * Load completed tasks with pagination.
+ * Returns tasks and total count for progress display.
+ * Uses stable sort order (last_modified desc, id desc) for consistent pagination.
+ */
+export const loadCompletedTasks = async (
+  limit: number,
+  offset: number
+): Promise<{ tasks: Task[]; total: number }> => {
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      logger.error('[loadCompletedTasks] Auth error:', authError);
+      return { tasks: [], total: 0 };
+    }
+    if (!user) {
+      logger.debug('[loadCompletedTasks] No user authenticated');
+      return { tasks: [], total: 0 };
+    }
+
+    logger.debug(`[loadCompletedTasks] Fetching completed tasks (limit: ${limit}, offset: ${offset})`);
+
+    const { data, error, count } = await supabase
+      .from('tasks')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.id)
+      .eq('completed', true)
+      .order('last_modified', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      logger.error('[loadCompletedTasks] Failed to load tasks:', error);
+      return { tasks: [], total: 0 };
+    }
+
+    const tasks = data ? data.map((task: DatabaseTask) => dbTaskToTask(task)) : [];
+    const total = count ?? 0;
+
+    logger.debug(`[loadCompletedTasks] Loaded ${tasks.length} of ${total} completed tasks`);
+    return { tasks, total };
+  } catch (error) {
+    logger.error('[loadCompletedTasks] Exception:', error);
+    return { tasks: [], total: 0 };
+  }
+};
+
 export const loadTasks = async (): Promise<Task[]> => {
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -164,9 +274,9 @@ export const loadTasks = async (): Promise<Task[]> => {
       }
     }
     
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('tasks')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('user_id', user.id)
       .order('created_at', { ascending: true });
 
@@ -191,6 +301,10 @@ export const loadTasks = async (): Promise<Task[]> => {
     if (!data) {
       logger.debug('[loadTasks] No data returned from query');
       return [];
+    }
+
+    if (typeof count === 'number' && count > data.length) {
+      logger.warn(`[loadTasks] Returned ${data.length} of ${count} tasks. The API may be truncating results (pagination/max-rows).`);
     }
 
     logger.debug(`[loadTasks] Retrieved ${data.length} tasks from database for user ${user.id}`);
@@ -294,8 +408,8 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
       });
 
     if (error) {
-      logger.error('Failed to save tasks:', error);
-      logger.error('Error details:', {
+      logger.error('[saveTasks] Failed to save tasks:', error);
+      logger.error('[saveTasks] Error details:', {
         message: error.message,
         details: error.details,
         hint: error.hint,
@@ -307,7 +421,7 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
     // Extract all unique tags from tasks and save tag colors if needed
     // (Tag colors are managed separately, but we ensure tags exist)
   } catch (error) {
-    logger.error('Failed to save tasks:', error);
+    logger.error('[saveTasks] Failed to save tasks:', error);
     throw error;
   }
 };
@@ -352,13 +466,17 @@ export const saveTags = async (_tags: string[]): Promise<void> => {
 };
 
 export const generateId = (): string => {
-  // Generate a UUID-like string that's compatible with Supabase
-  // Using crypto.randomUUID() if available, otherwise fallback
+  // Generate a UUID that's compatible with Supabase
+  // Using crypto.randomUUID() if available, otherwise fallback to UUID-compliant format
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // Fallback for older browsers
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  // Fallback for older browsers - generates UUID v4 compliant format
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 };
 
 export const loadTagColors = async (): Promise<Record<string, string>> => {
@@ -374,7 +492,7 @@ export const loadTagColors = async (): Promise<Record<string, string>> => {
       .eq('user_id', user.id);
 
     if (error) {
-      logger.error('Failed to load tag colors:', error);
+      logger.error('[loadTagColors] Failed to load tag colors:', error);
       return {};
     }
 
@@ -387,7 +505,7 @@ export const loadTagColors = async (): Promise<Record<string, string>> => {
 
     return colors;
   } catch (error) {
-    logger.error('Failed to load tag colors:', error);
+    logger.error('[loadTagColors] Failed to load tag colors:', error);
     return {};
   }
 };
@@ -396,7 +514,7 @@ export const saveTagColors = async (colors: Record<string, string>): Promise<voi
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      logger.error('Cannot save tag colors: user not authenticated');
+      logger.error('[saveTagColors] Cannot save tag colors: user not authenticated');
       return;
     }
 
@@ -420,11 +538,11 @@ export const saveTagColors = async (colors: Record<string, string>): Promise<voi
       });
 
     if (error) {
-      logger.error('Failed to save tag colors:', error);
+      logger.error('[saveTagColors] Failed to save tag colors:', error);
       throw error;
     }
   } catch (error) {
-    logger.error('Failed to save tag colors:', error);
+    logger.error('[saveTagColors] Failed to save tag colors:', error);
     throw error;
   }
 };
@@ -433,7 +551,7 @@ export const deleteTagColor = async (tag: string): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      logger.error('Cannot delete tag color: user not authenticated');
+      logger.error('[deleteTagColor] Cannot delete tag color: user not authenticated');
       return;
     }
 
@@ -445,12 +563,52 @@ export const deleteTagColor = async (tag: string): Promise<void> => {
       .eq('tag', normalizedTag);
 
     if (error) {
-      logger.error('Failed to delete tag color:', error);
+      logger.error('[deleteTagColor] Failed to delete tag color:', error);
       throw error;
     }
   } catch (error) {
-    logger.error('Failed to delete tag color:', error);
+    logger.error('[deleteTagColor] Failed to delete tag color:', error);
     throw error;
+  }
+};
+
+/**
+ * Load specific tasks by their IDs.
+ * Used to fetch the current state of tasks that may have been modified on another device.
+ */
+export const loadTasksByIds = async (taskIds: string[]): Promise<Task[]> => {
+  if (taskIds.length === 0) return [];
+
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      logger.error('[loadTasksByIds] Auth error:', authError);
+      return [];
+    }
+    if (!user) {
+      logger.debug('[loadTasksByIds] No user authenticated');
+      return [];
+    }
+
+    logger.debug(`[loadTasksByIds] Fetching ${taskIds.length} tasks by ID`);
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('id', taskIds);
+
+    if (error) {
+      logger.error('[loadTasksByIds] Failed to load tasks:', error);
+      return [];
+    }
+
+    const tasks = data ? data.map((task: DatabaseTask) => dbTaskToTask(task)) : [];
+    logger.debug(`[loadTasksByIds] Loaded ${tasks.length} tasks`);
+    return tasks;
+  } catch (error) {
+    logger.error('[loadTasksByIds] Exception:', error);
+    return [];
   }
 };
 
@@ -459,7 +617,7 @@ export const deleteTask = async (taskId: string): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      logger.error('Cannot delete task: user not authenticated');
+      logger.error('[deleteTask] Cannot delete task: user not authenticated');
       return;
     }
 
@@ -470,11 +628,11 @@ export const deleteTask = async (taskId: string): Promise<void> => {
       .eq('user_id', user.id);
 
     if (error) {
-      logger.error('Failed to delete task:', error);
+      logger.error('[deleteTask] Failed to delete task:', error);
       throw error;
     }
   } catch (error) {
-    logger.error('Failed to delete task:', error);
+    logger.error('[deleteTask] Failed to delete task:', error);
     throw error;
   }
 };
@@ -484,7 +642,7 @@ export const deleteTasks = async (taskIds: string[]): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      logger.error('Cannot delete tasks: user not authenticated');
+      logger.error('[deleteTasks] Cannot delete tasks: user not authenticated');
       return;
     }
 
@@ -497,12 +655,11 @@ export const deleteTasks = async (taskIds: string[]): Promise<void> => {
       .in('id', taskIds);
 
     if (error) {
-      logger.error('Failed to delete tasks:', error);
+      logger.error('[deleteTasks] Failed to delete tasks:', error);
       throw error;
     }
   } catch (error) {
-    logger.error('Failed to delete tasks:', error);
+    logger.error('[deleteTasks] Failed to delete tasks:', error);
     throw error;
   }
 };
-

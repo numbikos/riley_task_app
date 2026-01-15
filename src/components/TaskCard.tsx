@@ -1,5 +1,6 @@
 import { Task, TaskUpdate, getTagColor } from '../types';
 import { getDateDisplay, isDateOverdue, formatRecurrenceDisplay } from '../utils/dateUtils';
+import { Trash2, RefreshCw, AlertTriangle } from 'lucide-react';
 
 interface TaskCardProps {
   task: Task;
@@ -54,36 +55,36 @@ export default function TaskCard({ task, tagColors = {}, onToggleComplete, onEdi
         />
         <div className="task-title">{task.title}</div>
         <div className="task-actions">
-          <button 
-            className="task-action-btn delete" 
+          <button
+            className="task-action-btn delete"
             onClick={handleDeleteClick}
             title="Delete task"
           >
-            🗑️
+            <Trash2 className="icon-sm" />
           </button>
         </div>
       </div>
       
       {showDate && task.dueDate && (
-        <div className="task-description" style={{ color: isDateOverdue(task.dueDate) && !task.completed ? 'var(--danger)' : 'var(--text-secondary)' }}>
+        <div className={`task-description ${isDateOverdue(task.dueDate) && !task.completed ? 'task-date--overdue' : ''}`}>
           Due: {getDateDisplay(task.dueDate)}
           {isDateOverdue(task.dueDate) && !task.completed && ' (Overdue)'}
           {task.recurrence && (
-            <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', opacity: 0.8 }}>
-              🔁 {formatRecurrenceDisplay(task.recurrence, task.recurrenceMultiplier, task.customFrequency)}
+            <span className="task-recurrence-badge">
+              <RefreshCw className="icon-sm" /> {formatRecurrenceDisplay(task.recurrence, task.recurrenceMultiplier, task.customFrequency)}
             </span>
           )}
         </div>
       )}
       {!showDate && task.recurrence && (
-        <div className="task-description" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          🔁 Repeats {formatRecurrenceDisplay(task.recurrence, task.recurrenceMultiplier, task.customFrequency)}
+        <div className="task-description task-recurrence-info">
+          <RefreshCw className="icon-sm" /> Repeats {formatRecurrenceDisplay(task.recurrence, task.recurrenceMultiplier, task.customFrequency)}
         </div>
       )}
       {task.isLastInstance && !task.completed && (
         <div className="task-renewal-container" onClick={(e) => e.stopPropagation()}>
-          <div className="task-description" style={{ color: 'var(--danger)', fontSize: '0.9rem', fontWeight: 'bold', marginTop: '0.5rem', marginBottom: '0.5rem' }}>
-            ⚠️ LAST OCCURRENCE
+          <div className="task-description task-last-occurrence">
+            <AlertTriangle className="icon-sm" /> LAST OCCURRENCE
           </div>
           <button 
             className="btn btn-primary btn-small renew-btn"

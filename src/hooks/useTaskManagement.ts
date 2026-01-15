@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Task, TaskUpdate } from '../types';
-import { loadTasks, saveTasks, deleteTasks as deleteTasksFromDatabase, generateId } from '../utils/supabaseStorage';
+import { loadIncompleteTasks, loadCompletedTasks, loadTasksByIds, saveTasks, deleteTasks as deleteTasksFromDatabase, generateId } from '../utils/supabaseStorage';
 import { supabase } from '../utils/supabase';
 import { normalizeTags } from '../utils/taskOperations';
 import { logger } from '../utils/logger';
@@ -10,6 +10,10 @@ const RELOAD_DEBOUNCE_MS = 2000;
 const AUTH_DELAY_MS = 300;
 const LOAD_TIMEOUT_MS = 30000;
 export const UNDO_TIMEOUT_MS = 3000;
+const COMPLETED_TASKS_PAGE_SIZE = 25;
+const countCompletedTasks = (taskList: Task[]): number => {
+  return taskList.reduce((count, task) => count + (task.completed ? 1 : 0), 0);
+};
 
 interface DeletedTaskState {
   task: Task;
@@ -32,51 +36,83 @@ export const useTaskManagement = (user: User | null) => {
   const [migrationNotification, setMigrationNotification] = useState<string | null>(null);
   const [deletedTask, setDeletedTask] = useState<DeletedTaskState | null>(null);
   const [completedTask, setCompletedTask] = useState<CompletedTaskState | null>(null);
-  
+
+  // Progressive loading state for completed tasks
+  const [completedTasksLoaded, setCompletedTasksLoaded] = useState(0);
+  const [completedTasksTotal, setCompletedTasksTotal] = useState<number | null>(null);
+  const [hasMoreCompletedTasks, setHasMoreCompletedTasks] = useState(true);
+  const [isLoadingCompletedTasks, setIsLoadingCompletedTasks] = useState(false);
+  const [completedTasksLoadError, setCompletedTasksLoadError] = useState<string | null>(null);
+
   const isSavingRef = useRef(false);
   const lastSavedTasksRef = useRef<string>('');
   const isLoadingUserDataRef = useRef(false);
   const recentlyUpdatedTasksRef = useRef<Map<string, number>>(new Map()); // Track task IDs and timestamps
 
-  // Load user data when authenticated
+  // Load user data when authenticated (split loading: incomplete first, then first page of completed)
   const loadUserData = async (showNotification = false) => {
     // Prevent multiple simultaneous calls
     if (isLoadingUserDataRef.current) {
       logger.debug('[loadUserData] Already loading, skipping duplicate call');
       return;
     }
-    
+
     let timeoutId: number | null = null;
     isLoadingUserDataRef.current = true;
-    
+
     try {
       setIsLoadingFromDatabase(true); // Prevent save effect from running
-      logger.debug('[loadUserData] Loading tasks from Supabase...');
-      
+      logger.debug('[loadUserData] Loading tasks from Supabase (split loading)...');
+
       // Set a timeout to prevent infinite loading
-      const loadTasksWithTimeout = Promise.race<Task[]>([
-        loadTasks(),
-        new Promise<Task[]>((_, reject) => {
-          timeoutId = window.setTimeout(() => {
-            reject(new Error('Loading tasks timed out after 30 seconds'));
-          }, LOAD_TIMEOUT_MS);
-        })
-      ]);
-      
-      const loadedTasks = await loadTasksWithTimeout;
-      
+      const loadWithTimeout = <T,>(promise: Promise<T>, label: string): Promise<T> => {
+        return Promise.race<T>([
+          promise,
+          new Promise<T>((_, reject) => {
+            timeoutId = window.setTimeout(() => {
+              reject(new Error(`${label} timed out after 30 seconds`));
+            }, LOAD_TIMEOUT_MS);
+          })
+        ]);
+      };
+
+      // Load incomplete tasks first (all of them via internal pagination)
+      const incompleteTasks = await loadWithTimeout(loadIncompleteTasks(), 'Loading incomplete tasks');
+
+      // Clear timeout and reset for next load
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+
+      // Load first page of completed tasks (get total count from this query)
+      const { tasks: completedTasksPage, total: completedTotal } = await loadWithTimeout(
+        loadCompletedTasks(COMPLETED_TASKS_PAGE_SIZE, 0),
+        'Loading completed tasks'
+      );
+
       // Clear timeout if we got a response
       if (timeoutId) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
-      
-      logger.debug(`[loadUserData] Loaded ${loadedTasks.length} tasks from Supabase`);
-      setTasks(loadedTasks);
+
+      // Combine incomplete and first page of completed tasks
+      const allTasks = [...incompleteTasks, ...completedTasksPage];
+
+      logger.debug(`[loadUserData] Loaded ${incompleteTasks.length} incomplete + ${completedTasksPage.length} of ${completedTotal} completed tasks`);
+      setTasks(allTasks);
+
+      // Update completed tasks pagination state
+      setCompletedTasksLoaded(completedTasksPage.length);
+      setCompletedTasksTotal(completedTotal);
+      setHasMoreCompletedTasks(completedTasksPage.length < completedTotal);
+
       // Update the last saved ref to prevent triggering save after initial load
-      lastSavedTasksRef.current = JSON.stringify(loadedTasks);
+      lastSavedTasksRef.current = JSON.stringify(allTasks);
       if (showNotification) {
-        setMigrationNotification(`Refreshed! Loaded ${loadedTasks.length} task${loadedTasks.length !== 1 ? 's' : ''}`);
+        const totalLoaded = incompleteTasks.length + completedTasksPage.length;
+        setMigrationNotification(`Refreshed! Loaded ${totalLoaded} task${totalLoaded !== 1 ? 's' : ''}`);
         setTimeout(() => {
           setMigrationNotification(null);
         }, 2000);
@@ -90,11 +126,11 @@ export const useTaskManagement = (user: User | null) => {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
-      
+
       // Only show error if it's a real error, not just a timeout that might recover
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isTimeoutError = errorMessage.includes('timed out');
-      
+
       // For timeout errors, don't show notification - just log it
       if (!isTimeoutError) {
         setMigrationNotification(`Failed to load tasks: ${errorMessage}. Try refreshing the page.`);
@@ -104,12 +140,16 @@ export const useTaskManagement = (user: User | null) => {
       } else {
         logger.warn('[loadUserData] Timeout occurred, but continuing without error notification');
       }
-      
+
       // Still mark as loaded to prevent infinite retries
       setHasLoadedTasks(true);
       // Set empty tasks so app can still function
       setTasks([]);
       lastSavedTasksRef.current = JSON.stringify([]);
+      // Reset completed tasks pagination state
+      setCompletedTasksLoaded(0);
+      setCompletedTasksTotal(null);
+      setHasMoreCompletedTasks(false);
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -118,6 +158,157 @@ export const useTaskManagement = (user: User | null) => {
       isLoadingUserDataRef.current = false; // Allow future calls
     }
   };
+
+  // Load more completed tasks (pagination)
+  const loadMoreCompletedTasks = async () => {
+    if (isLoadingCompletedTasks || !hasMoreCompletedTasks) {
+      return;
+    }
+
+    setIsLoadingFromDatabase(true); // Prevent redundant saveTasks upserts
+    setIsLoadingCompletedTasks(true);
+    setCompletedTasksLoadError(null); // Clear any previous error
+
+    try {
+      const offset = countCompletedTasks(tasks);
+      logger.debug(`[loadMoreCompletedTasks] Loading more completed tasks (offset: ${offset})`);
+
+      const { tasks: newCompletedTasks, total } = await loadCompletedTasks(
+        COMPLETED_TASKS_PAGE_SIZE,
+        offset
+      );
+
+      if (newCompletedTasks.length > 0) {
+        // Append new completed tasks to existing tasks
+        setTasks(currentTasks => {
+          const updatedTasks = [...currentTasks, ...newCompletedTasks];
+          lastSavedTasksRef.current = JSON.stringify(updatedTasks);
+          return updatedTasks;
+        });
+
+        const newLoaded = offset + newCompletedTasks.length;
+        const effectiveTotal = Math.max(total, newLoaded);
+        setCompletedTasksLoaded(newLoaded);
+        setCompletedTasksTotal(effectiveTotal);
+        setHasMoreCompletedTasks(newLoaded < effectiveTotal);
+
+        logger.debug(`[loadMoreCompletedTasks] Loaded ${newCompletedTasks.length} more, now ${newLoaded} of ${effectiveTotal}`);
+      } else {
+        setCompletedTasksTotal(total);
+        setHasMoreCompletedTasks(false);
+      }
+    } catch (error) {
+      logger.error('[loadMoreCompletedTasks] Failed to load more completed tasks:', error);
+      setCompletedTasksLoadError('Failed to load more tasks. Please try again.');
+    } finally {
+      setIsLoadingFromDatabase(false);
+      setIsLoadingCompletedTasks(false);
+    }
+  };
+
+  const mergeIncompleteTasks = (
+    currentTasks: Task[],
+    updatedIncompleteTasks: Task[],
+    remotelyModifiedTasks: Task[],
+    source: string
+  ): Task[] => {
+    if (!Array.isArray(currentTasks)) {
+      logger.warn(`[${source}] currentTasks is not an array, using reloaded incomplete tasks`);
+      lastSavedTasksRef.current = JSON.stringify(updatedIncompleteTasks);
+      return updatedIncompleteTasks;
+    }
+
+    const recentlyUpdatedIds = Array.from(recentlyUpdatedTasksRef.current.keys());
+
+    const mergedIncompleteTasks = updatedIncompleteTasks.map(reloadedTask => {
+      const localTask = currentTasks.find(t => t.id === reloadedTask.id);
+      if (localTask && recentlyUpdatedIds.includes(reloadedTask.id)) {
+        logger.debug(`[${source}] Preserving local state for recently updated task: ${reloadedTask.id}`);
+        return localTask;
+      }
+      return reloadedTask;
+    });
+
+    const reloadedIds = new Set(updatedIncompleteTasks.map(t => t.id));
+    const remotelyModifiedIds = new Set(remotelyModifiedTasks.map(t => t.id));
+
+    const missingLocalIncompleteTasks = currentTasks
+      .filter(t => !t.completed && !reloadedIds.has(t.id) && !remotelyModifiedIds.has(t.id))
+      .filter(t => recentlyUpdatedIds.includes(t.id));
+
+    // Keep existing completed tasks that weren't reloaded or remotely modified
+    const currentCompletedTasks = currentTasks.filter(
+      t => t.completed && !reloadedIds.has(t.id) && !remotelyModifiedIds.has(t.id)
+    );
+
+    // Add remotely completed tasks (tasks completed on another device)
+    const remotelyCompletedTasks = remotelyModifiedTasks.filter(t => t.completed);
+    if (remotelyCompletedTasks.length > 0) {
+      logger.debug(`[${source}] Adding ${remotelyCompletedTasks.length} tasks completed on another device`);
+    }
+
+    const finalTasks = [
+      ...mergedIncompleteTasks,
+      ...missingLocalIncompleteTasks,
+      ...currentCompletedTasks,
+      ...remotelyCompletedTasks,
+    ];
+    lastSavedTasksRef.current = JSON.stringify(finalTasks);
+    return finalTasks;
+  };
+
+  const refreshIncompleteTasks = async (source: string) => {
+    if (isLoadingUserDataRef.current) {
+      logger.debug(`[${source}] Skipping refresh - full load in progress`);
+      return;
+    }
+
+    setIsLoadingFromDatabase(true);
+    try {
+      // Capture current tasks snapshot for detecting remotely-modified tasks
+      // We need this before the async load to know which tasks might have been modified elsewhere
+      const currentTasksSnapshot = tasks;
+      const recentlyUpdatedIds = Array.from(recentlyUpdatedTasksRef.current.keys());
+
+      const updatedIncompleteTasks = await loadIncompleteTasks();
+      logger.debug(`[${source}] Reloaded ${updatedIncompleteTasks.length} incomplete tasks`);
+
+      // Find tasks that were locally incomplete but missing from reload (and not recently updated locally)
+      // These are candidates for being completed/modified on another device
+      const reloadedIds = new Set(updatedIncompleteTasks.map(t => t.id));
+      const potentiallyRemotelyModifiedIds = currentTasksSnapshot
+        .filter(t => !t.completed && !reloadedIds.has(t.id) && !recentlyUpdatedIds.includes(t.id))
+        .map(t => t.id);
+
+      // Fetch current state of these tasks from the database
+      let remotelyModifiedTasks: Task[] = [];
+      if (potentiallyRemotelyModifiedIds.length > 0) {
+        logger.debug(`[${source}] Fetching ${potentiallyRemotelyModifiedIds.length} potentially remotely-modified tasks`);
+        remotelyModifiedTasks = await loadTasksByIds(potentiallyRemotelyModifiedIds);
+      }
+
+      setTasks(currentTasks => mergeIncompleteTasks(currentTasks, updatedIncompleteTasks, remotelyModifiedTasks, source));
+    } catch (error) {
+      logger.error(`[${source}] Error reloading tasks:`, error);
+    } finally {
+      setTimeout(() => {
+        setIsLoadingFromDatabase(false);
+      }, 500);
+    }
+  };
+
+  useEffect(() => {
+    const completedCount = countCompletedTasks(tasks);
+    setCompletedTasksLoaded(prev => (prev === completedCount ? prev : completedCount));
+
+    if (completedTasksTotal !== null) {
+      const effectiveTotal = Math.max(completedTasksTotal, completedCount);
+      if (effectiveTotal !== completedTasksTotal) {
+        setCompletedTasksTotal(effectiveTotal);
+      }
+      setHasMoreCompletedTasks(completedCount < effectiveTotal);
+    }
+  }, [tasks, completedTasksTotal]);
 
   // Load tasks when user is authenticated
   useEffect(() => {
@@ -174,7 +365,7 @@ export const useTaskManagement = (user: User | null) => {
     if (!user) return;
 
     logger.debug('[Real-time] Setting up subscription for user:', user.id);
-    
+
     // Debounce reloads to avoid excessive queries
     let reloadTimeout: number | null = null;
     const debouncedReload = async () => {
@@ -183,62 +374,7 @@ export const useTaskManagement = (user: User | null) => {
       }
       reloadTimeout = window.setTimeout(async () => {
         logger.debug('[Real-time] Debounced reload triggered');
-        setIsLoadingFromDatabase(true);
-        try {
-          const updatedTasks = await loadTasks();
-          logger.debug(`[Real-time] Reloaded ${updatedTasks.length} tasks after change`);
-          
-          // Merge reloaded tasks with local optimistic updates for recently changed tasks
-          // This prevents race conditions when completing tasks quickly
-          setTasks(currentTasks => {
-            try {
-              // Safety check: ensure currentTasks is an array
-              if (!Array.isArray(currentTasks)) {
-                logger.warn('[Real-time] currentTasks is not an array, using reloaded data');
-                lastSavedTasksRef.current = JSON.stringify(updatedTasks);
-                return updatedTasks;
-              }
-
-              const recentlyUpdatedIds = Array.from(recentlyUpdatedTasksRef.current.keys());
-              if (recentlyUpdatedIds.length === 0) {
-                // No recent updates, use reloaded data as-is
-                lastSavedTasksRef.current = JSON.stringify(updatedTasks);
-                return updatedTasks;
-              }
-              
-              // Merge: use reloaded data, but preserve local state for recently updated tasks
-              const mergedTasks = updatedTasks.map(reloadedTask => {
-                const localTask = currentTasks.find(t => t.id === reloadedTask.id);
-                if (localTask && recentlyUpdatedIds.includes(reloadedTask.id)) {
-                  // Preserve local state for recently updated tasks to prevent race conditions
-                  logger.debug(`[Real-time] Preserving local state for recently updated task: ${reloadedTask.id}`);
-                  return localTask;
-                }
-                return reloadedTask;
-              });
-              
-              // Add any local tasks that aren't in reloaded data (shouldn't happen, but safety check)
-              const reloadedIds = new Set(updatedTasks.map(t => t.id));
-              const missingLocalTasks = currentTasks.filter(t => !reloadedIds.has(t.id));
-              const finalTasks = [...mergedTasks, ...missingLocalTasks];
-              
-              lastSavedTasksRef.current = JSON.stringify(finalTasks);
-              return finalTasks;
-            } catch (error) {
-              logger.error('[Real-time] Error in merge logic, using reloaded data:', error);
-              // Fallback to reloaded data if merge fails
-              lastSavedTasksRef.current = JSON.stringify(updatedTasks);
-              return updatedTasks;
-            }
-          });
-        } catch (error) {
-          logger.error('[Real-time] Error reloading tasks:', error);
-        } finally {
-          // Wait a bit longer to ensure state updates are complete
-          setTimeout(() => {
-            setIsLoadingFromDatabase(false);
-          }, 500);
-        }
+        await refreshIncompleteTasks('Real-time');
       }, 1000); // Increased debounce to 1000ms to allow rapid completions to settle
     };
     
@@ -326,7 +462,7 @@ export const useTaskManagement = (user: User | null) => {
           reloadTimeout = window.setTimeout(() => {
             logger.debug('[Visibility] Page became visible, reloading tasks...');
             lastReloadTime = Date.now();
-            loadUserData(false); // Don't show notification for auto-refresh
+            refreshIncompleteTasks('Visibility'); // Don't reset completed task pagination
           }, 500); // Small delay to prevent rapid-fire reloads
         }
       }
@@ -344,7 +480,7 @@ export const useTaskManagement = (user: User | null) => {
         reloadTimeout = window.setTimeout(() => {
           logger.debug('[Focus] Window focused, reloading tasks...');
           lastReloadTime = Date.now();
-          loadUserData(false); // Don't show notification for auto-refresh
+          refreshIncompleteTasks('Focus'); // Don't reset completed task pagination
         }, 500); // Small delay to prevent rapid-fire reloads
       }
     };
@@ -394,13 +530,13 @@ export const useTaskManagement = (user: User | null) => {
   const updateTask = (id: string, updates: TaskUpdate) => {
     const existingTask = tasks.find(t => t.id === id);
     if (!existingTask) return;
-    
+
     // Don't handle recurring tasks here - they should be handled by useRecurringTasks
     if (existingTask.recurrence || updates.recurrence) {
       logger.warn('[useTaskManagement] Recurring task updates should be handled by useRecurringTasks hook');
       return;
     }
-    
+
     // Track this task as recently updated to prevent reload from overwriting it
     recentlyUpdatedTasksRef.current.set(id, Date.now());
     // Clean up old entries (older than 2 seconds)
@@ -410,9 +546,24 @@ export const useTaskManagement = (user: User | null) => {
         recentlyUpdatedTasksRef.current.delete(taskId);
       }
     }
-    
+
+    // Update pagination counters if completion status changed
+    if (updates.completed !== undefined && updates.completed !== existingTask.completed) {
+      if (updates.completed) {
+        // Task was marked as completed - increment counters
+        setCompletedTasksLoaded(prev => prev + 1);
+        setCompletedTasksTotal(prev => prev !== null ? prev + 1 : 1);
+        logger.debug('[updateTask] Task completed, incremented pagination counters');
+      } else {
+        // Task was unmarked as completed - decrement counters (not below 0)
+        setCompletedTasksLoaded(prev => Math.max(0, prev - 1));
+        setCompletedTasksTotal(prev => prev !== null ? Math.max(0, prev - 1) : null);
+        logger.debug('[updateTask] Task uncompleted, decremented pagination counters');
+      }
+    }
+
     const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
-    
+
     setTasks(tasks.map(task => {
       if (task.id === id) {
         // Remove internal flags before saving
@@ -437,10 +588,20 @@ export const useTaskManagement = (user: User | null) => {
     // Capture original tasks before modification for error recovery
     const originalTasks = tasks;
 
+    // Count completed tasks being deleted for pagination counter update
+    const completedTasksBeingDeleted = tasksToDelete.filter(t => t.completed).length;
+
     // Remove tasks from list
     const taskIdsToDelete = new Set(tasksToDelete.map(t => t.id));
     const remainingTasks = tasks.filter(task => !taskIdsToDelete.has(task.id));
     setTasks(remainingTasks);
+
+    // Update pagination counters for deleted completed tasks
+    if (completedTasksBeingDeleted > 0) {
+      setCompletedTasksLoaded(prev => Math.max(0, prev - completedTasksBeingDeleted));
+      setCompletedTasksTotal(prev => prev !== null ? Math.max(0, prev - completedTasksBeingDeleted) : null);
+      logger.debug(`[performDelete] Deleted ${completedTasksBeingDeleted} completed task(s), decremented pagination counters`);
+    }
 
     // Delete from database
     try {
@@ -450,6 +611,12 @@ export const useTaskManagement = (user: User | null) => {
       logger.error('[deleteTask] Failed to delete tasks from database:', error);
       // Restore original tasks if database delete failed
       setTasks(originalTasks);
+      // Restore pagination counters on error
+      if (completedTasksBeingDeleted > 0) {
+        setCompletedTasksLoaded(prev => prev + completedTasksBeingDeleted);
+        setCompletedTasksTotal(prev => prev !== null ? prev + completedTasksBeingDeleted : completedTasksBeingDeleted);
+        logger.debug(`[performDelete] Restored pagination counters after delete failure`);
+      }
       return;
     }
 
@@ -464,10 +631,21 @@ export const useTaskManagement = (user: User | null) => {
   const undoDelete = async () => {
     if (deletedTask) {
       clearTimeout(deletedTask.timeoutId);
+
+      // Count completed tasks being restored for pagination counter update
+      const completedTasksBeingRestored = deletedTask.tasks.filter(t => t.completed).length;
+
       // Restore all deleted tasks
       const restoredTasks = [...tasks, ...deletedTask.tasks];
       setTasks(restoredTasks);
-      
+
+      // Restore pagination counters for restored completed tasks
+      if (completedTasksBeingRestored > 0) {
+        setCompletedTasksLoaded(prev => prev + completedTasksBeingRestored);
+        setCompletedTasksTotal(prev => prev !== null ? prev + completedTasksBeingRestored : completedTasksBeingRestored);
+        logger.debug(`[undoDelete] Restored ${completedTasksBeingRestored} completed task(s), incremented pagination counters`);
+      }
+
       // Save restored tasks to database
       try {
         await saveTasks(restoredTasks);
@@ -476,8 +654,14 @@ export const useTaskManagement = (user: User | null) => {
         logger.error('[undoDelete] Failed to restore tasks to database:', error);
         // Revert local state if save failed
         setTasks(tasks.filter(task => !deletedTask.tasks.some(dt => dt.id === task.id)));
+        // Revert pagination counters on error
+        if (completedTasksBeingRestored > 0) {
+          setCompletedTasksLoaded(prev => Math.max(0, prev - completedTasksBeingRestored));
+          setCompletedTasksTotal(prev => prev !== null ? Math.max(0, prev - completedTasksBeingRestored) : null);
+          logger.debug(`[undoDelete] Reverted pagination counters after restore failure`);
+        }
       }
-      
+
       setDeletedTask(null);
     }
   };
@@ -530,6 +714,12 @@ export const useTaskManagement = (user: User | null) => {
     migrationNotification,
     setMigrationNotification,
     trackRecentUpdate,
+    // Progressive loading for completed tasks
+    loadMoreCompletedTasks,
+    hasMoreCompletedTasks,
+    isLoadingCompletedTasks,
+    completedTasksLoaded,
+    completedTasksTotal,
+    completedTasksLoadError,
   };
 };
-

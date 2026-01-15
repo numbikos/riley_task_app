@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Task, getTagColor, DEFAULT_TAG_COLORS } from '../types';
 import { loadTags, saveTags, loadTagColors, saveTagColors, deleteTagColor } from '../utils/supabaseStorage';
 import { logger } from '../utils/logger';
+import { Trash2 } from 'lucide-react';
 
 interface TagManagerProps {
   tasks: Task[];
@@ -423,7 +424,7 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
                       onClick={() => handleDeleteTag(tag)}
                       title={`Delete "${displayName}" tag`}
                     >
-                      🗑️
+                      <Trash2 className="icon-sm" />
                     </button>
                   </div>
                 </div>

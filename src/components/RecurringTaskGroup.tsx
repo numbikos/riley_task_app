@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Task, TaskUpdate, getTagColor } from '../types';
 import TaskCard from './TaskCard';
 import { formatRecurrenceDisplay, getDateDisplay } from '../utils/dateUtils';
+import { RefreshCw, Trash2 } from 'lucide-react';
 
 interface RecurringTaskGroupProps {
   tasks: Task[]; // All tasks in this recurrence group
@@ -99,15 +100,8 @@ export default function RecurringTaskGroup({
             <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
               {representativeTask.title}
             </span>
-            <span style={{ 
-              fontSize: '0.75rem', 
-              color: 'var(--secondary)',
-              background: 'rgba(16, 185, 129, 0.1)',
-              padding: '0.125rem 0.375rem',
-              borderRadius: '4px',
-              border: '1px solid rgba(16, 185, 129, 0.3)'
-            }}>
-              🔁 {recurrenceDisplay}
+            <span className="recurring-group-badge">
+              <RefreshCw className="icon-sm" /> {recurrenceDisplay}
             </span>
           </div>
           <div style={{ 
@@ -161,24 +155,10 @@ export default function RecurringTaskGroup({
                 onDelete(representativeTask.id);
               }
             }}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '0.25rem',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--danger)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--text-muted)';
-            }}
+            className="recurring-group-delete-btn"
             title={onDeleteGroup ? "Delete all incomplete tasks in this group" : "Delete recurring series"}
           >
-            🗑️
+            <Trash2 className="icon-sm" />
           </button>
         </div>
       </div>

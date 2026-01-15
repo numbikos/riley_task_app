@@ -45,13 +45,14 @@ export const getTodayTasks = (
   formatDate: (date: Date) => string
 ): Task[] => {
   const dateStr = formatDate(date);
-  const isToday = isDateToday(formatDate(new Date()));
+  // Check if the passed view date is actual today (not always true like before)
+  const isActualToday = dateStr === formatDate(new Date());
   
   return tasks.filter(task => {
     if (task.completed) return false;
     if (!task.dueDate) return false;
-    
-    if (isToday) {
+
+    if (isActualToday) {
       // For actual today, include tasks due today OR overdue tasks (carryover)
       return isDateToday(task.dueDate) || isDateOverdue(task.dueDate);
     } else {
@@ -61,7 +62,7 @@ export const getTodayTasks = (
     }
   }).sort((a, b) => {
     // Sort by overdue status only if viewing today
-    if (isToday) {
+    if (isActualToday) {
       const aIsOverdue = a.dueDate ? isDateOverdue(a.dueDate) : false;
       const bIsOverdue = b.dueDate ? isDateOverdue(b.dueDate) : false;
       
@@ -82,13 +83,14 @@ export const getTomorrowTasks = (
   formatDate: (date: Date) => string
 ): Task[] => {
   const dateStr = formatDate(date);
-  const isTomorrow = isDateTomorrow(formatDate(new Date()));
-  
+  // Check if the passed view date is actual tomorrow (not always false like before)
+  const isActualTomorrow = isDateTomorrow(dateStr);
+
   return tasks.filter(task => {
     if (task.completed) return false;
     if (!task.dueDate) return false;
-    
-    if (isTomorrow) {
+
+    if (isActualTomorrow) {
       // For actual tomorrow, use the tomorrow check
       return isDateTomorrow(task.dueDate);
     } else {
