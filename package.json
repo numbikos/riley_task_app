@@ -1,6 +1,6 @@
 {
   "name": "riley-task-app",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "type": "module",
   "scripts": {
     "dev": "vite",
