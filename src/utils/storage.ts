@@ -34,3 +34,28 @@ export const saveViewState = (state: ViewState): void => {
     logger.error('Failed to save view state:', error);
   }
 };
+
+// Love message storage - tracks when daily message was last shown
+const LOVE_MESSAGE_KEY = 'riley-love-message-last-shown';
+
+// Returns YYYY-MM-DD format in local time
+export const getTodayDateString = (): string => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
+
+export const getLastLoveMessageDate = (): string | null => {
+  try {
+    return localStorage.getItem(LOVE_MESSAGE_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const setLastLoveMessageDate = (date: string): void => {
+  try {
+    localStorage.setItem(LOVE_MESSAGE_KEY, date);
+  } catch (error) {
+    logger.error('[storage] Failed to save love message date:', error);
+  }
+};

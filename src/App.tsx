@@ -29,8 +29,11 @@ import UndoNotification from './components/UndoNotification';
 import CompletionUndoNotification from './components/CompletionUndoNotification';
 import DeleteRecurringDialog from './components/DeleteRecurringDialog';
 import EditRecurringDialog from './components/EditRecurringDialog';
+import LoveMessageDialog from './components/LoveMessageDialog';
 import Auth from './components/Auth';
 import { findFirstInstance } from './utils/recurringTaskHelpers';
+import { getTodayDateString, getLastLoveMessageDate, setLastLoveMessageDate } from './utils/storage';
+import { TARGET_USER_EMAIL, getDailyMessage } from './data/loveMessages';
 import './App.css';
 
 function App() {
@@ -100,6 +103,7 @@ function App() {
   } | null>(null);
   const [showTagManager, setShowTagManager] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showLoveMessage, setShowLoveMessage] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -122,6 +126,21 @@ function App() {
       setTagColors({});
     }
   }, [user, loading]);
+
+  // Show daily love message for target user
+  useEffect(() => {
+    if (!user?.email) return;
+    if (user.email !== TARGET_USER_EMAIL) return;
+
+    const today = getTodayDateString();
+    const lastShown = getLastLoveMessageDate();
+
+    if (lastShown !== today) {
+      // Consume-on-show: mark as shown immediately
+      setLastLoveMessageDate(today);
+      setShowLoveMessage(true);
+    }
+  }, [user?.email]);
 
   // Handle auth success
   const handleAuthSuccess = useCallback(async () => {
@@ -829,6 +848,13 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
             </button>
           </div>
         </div>
+      )}
+
+      {showLoveMessage && (
+        <LoveMessageDialog
+          message={getDailyMessage(getTodayDateString())}
+          onDismiss={() => setShowLoveMessage(false)}
+        />
       )}
     </div>
   );

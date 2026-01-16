@@ -3810,3 +3810,29 @@ form {
     height: 120px;
   }
 }
+
+
+/* Love Message Dialog */
+.love-message-dialog {
+  animation: loveMessageIn 0.3s ease;
+}
+
+@keyframes loveMessageIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes heartPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
