@@ -249,7 +249,7 @@ export const useRecurringTasks = (
     setTasks([...updatedTasks, ...newTasks]);
     
     // Show notification
-    setAutoRenewNotification({ taskTitle: task.title, count: 50 });
+    setAutoRenewNotification({ taskTitle: task.title, count: newTasks.length });
     setTimeout(() => {
       setAutoRenewNotification(null);
     }, 5000);
@@ -268,7 +268,7 @@ export const useRecurringTasks = (
     currentDate.setDate(currentDate.getDate() + 1);
     const nextStartDate = formatDate(currentDate);
     
-    // Generate next 50 instances
+    // Generate next batch of instances
     const newRecurrenceGroupId = generateId();
     const newTasks = createRecurringTaskInstances(
       {
@@ -277,15 +277,14 @@ export const useRecurringTasks = (
         createdAt: task.createdAt, // Preserve original creation date
       },
       nextStartDate,
-      task.recurrence,
-      50
+      task.recurrence
     );
-    
+
     // Add new tasks
     setTasks(currentTasks => [...currentTasks, ...newTasks]);
-    
+
     // Show notification
-    setAutoRenewNotification({ taskTitle: task.title, count: 50 });
+    setAutoRenewNotification({ taskTitle: task.title, count: newTasks.length });
     setTimeout(() => {
       setAutoRenewNotification(null);
     }, 5000);

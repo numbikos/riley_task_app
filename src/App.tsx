@@ -321,8 +321,11 @@ function App() {
         const completedSubtasks = task.subtasks.map(st => ({ ...st, completed: true }));
         const previousState = { ...task };
         updateTask(id, { completed: true, subtasks: completedSubtasks });
-        
+
         setCompletedTask({ task: { ...task, completed: true, subtasks: completedSubtasks }, previousState });
+
+        // Handle auto-renewal if this is the last instance
+        handleAutoRenewal(task);
         return;
       }
     }

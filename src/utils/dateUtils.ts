@@ -174,12 +174,12 @@ export const formatRecurrenceDisplay = (
 };
 
 /**
- * Generates all recurring dates for a task (exactly 50 instances)
+ * Generates all recurring dates for a task
  * @param startDate The starting date for the recurrence
  * @param recurrence The recurrence type
  * @param multiplier For custom recurrence, the multiplier (1-50) with frequency
  * @param customFrequency For custom recurrence, the base frequency to multiply
- * @param count Number of instances to generate (default 50)
+ * @param count Number of instances to generate
  */
 export const generateRecurringDates = (
   startDate: Date | string, 

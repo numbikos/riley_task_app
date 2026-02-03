@@ -20,7 +20,7 @@ export interface Task {
   recurrenceMultiplier?: number; // For custom recurrence: multiplier (1-50) with frequency
   customFrequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'; // For custom recurrence: the base frequency
   isLastInstance?: boolean; // True if this is the last instance in a recurrence series
-  autoRenew?: boolean; // If true, automatically create next 50 instances when last instance is completed
+  autoRenew?: boolean; // If true, automatically create next batch of instances when last instance is completed
 }
 
 export type ViewType = 'today' | 'tomorrow' | 'week' | 'all' | 'completed' | 'day' | 'stats';

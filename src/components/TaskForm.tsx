@@ -591,7 +591,12 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                     </div>
                   </div>
                   <div className="custom-recurrence-preview">
-                    Will create 50 instances: Every {recurrenceMultiplier} {customFrequency === 'quarterly' ? 'quarters' : customFrequency === 'yearly' ? 'years' : customFrequency + 's'}
+                    Will create 10 instances: Every {recurrenceMultiplier} {
+                      customFrequency === 'daily' ? 'days' :
+                      customFrequency === 'weekly' ? 'weeks' :
+                      customFrequency === 'monthly' ? 'months' :
+                      customFrequency === 'quarterly' ? 'quarters' : 'years'
+                    }
                   </div>
                 </div>
               )}
@@ -604,7 +609,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                     onClick={(e) => {
                       e.preventDefault();
                       const confirmed = window.confirm(
-                        `Add 50 more occurrences to "${task.title}"?`
+                        `Add 10 more occurrences to "${task.title}"?`
                       );
                       if (confirmed) {
                         onExtendRecurring();
@@ -612,7 +617,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
                       }
                     }}
                   >
-                    +50 occurrences
+                    +10 occurrences
                   </button>
                 </div>
               )}
