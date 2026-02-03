@@ -121,8 +121,7 @@ export const useRecurringTasks = (
           createdAt: existingTask.createdAt, // Preserve original creation date
         },
         startDate,
-        recurrence,
-        50
+        recurrence
       );
       
       setTasks([...remainingTasks, ...newTasks]);
@@ -157,8 +156,7 @@ export const useRecurringTasks = (
           createdAt: existingTask.createdAt, // Preserve original creation date
         },
         updates.dueDate,
-        existingTask.recurrence,
-        50
+        existingTask.recurrence
       );
       
       setTasks([...remainingTasks, ...newTasks]);

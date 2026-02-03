@@ -164,9 +164,10 @@ export const formatRecurrenceDisplay = (
   if (!recurrence) return '';
   
   if (recurrence === 'custom' && multiplier && customFrequency) {
-    const frequencyLabel = customFrequency === 'quarterly' ? 'quarters' : 
-                           customFrequency === 'yearly' ? 'years' :
-                           customFrequency + 's';
+    const frequencyLabel = customFrequency === 'daily' ? 'days' :
+                           customFrequency === 'weekly' ? 'weeks' :
+                           customFrequency === 'monthly' ? 'months' :
+                           customFrequency === 'quarterly' ? 'quarters' : 'years';
     return `Every ${multiplier} ${frequencyLabel}`;
   }
   
@@ -182,9 +183,9 @@ export const formatRecurrenceDisplay = (
  * @param count Number of instances to generate
  */
 export const generateRecurringDates = (
-  startDate: Date | string, 
-  recurrence: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom', 
-  count: number = 50,
+  startDate: Date | string,
+  recurrence: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'custom',
+  count: number = 10,
   multiplier: number = 1,
   customFrequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 ): string[] => {
