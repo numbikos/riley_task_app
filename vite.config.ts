@@ -5,6 +5,12 @@ import { readFileSync } from 'fs'
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
+// Node 25+ has a built-in localStorage that shadows jsdom's in tests (and is undefined
+// without --localstorage-file). Turn it off where the flag exists; Node 20 doesn't have it.
+const testExecArgv = process.allowedNodeEnvironmentFlags.has('--experimental-webstorage')
+  ? ['--no-experimental-webstorage']
+  : []
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -21,6 +27,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    execArgv: testExecArgv,
     testTimeout: 10000, // 10 seconds per test
     hookTimeout: 10000, // 10 seconds for hooks (beforeEach, afterEach, etc.)
     teardownTimeout: 5000, // 5 seconds for teardown
