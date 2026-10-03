@@ -3,9 +3,23 @@ import { ViewType } from '../types';
 import { loadViewState, saveViewState } from '../utils/storage';
 import type { User } from '@supabase/supabase-js';
 import { logger } from '../utils/logger';
+import { formatDate, parseLocalDate } from '../utils/dateUtils';
 
 const VIEW_STATE_SAVE_DEBOUNCE_MS = 500;
+const DAY_ROLLOVER_CHECK_MS = 60000;
 const VALID_VIEWS: ViewType[] = ['today', 'tomorrow', 'week', 'all', 'completed', 'day', 'stats'];
+
+const getToday = (): Date => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
+
+const getTomorrow = (): Date => {
+  const tomorrow = getToday();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow;
+};
 
 /**
  * Parse URL hash to extract view and optional day date
@@ -18,10 +32,12 @@ const parseHash = (): { view: ViewType | null; dayDate: Date | null } => {
   // Check for day view with date: #day-2025-01-14
   if (hash.startsWith('day-')) {
     const dateStr = hash.slice(4);
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      date.setHours(0, 0, 0, 0);
-      return { view: 'day', dayDate: date };
+    // Parse as a local date (new Date('YYYY-MM-DD') is UTC, i.e. the previous day in US timezones)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const date = parseLocalDate(dateStr);
+      if (!isNaN(date.getTime())) {
+        return { view: 'day', dayDate: date };
+      }
     }
   }
 
@@ -38,8 +54,7 @@ const parseHash = (): { view: ViewType | null; dayDate: Date | null } => {
  */
 const buildHash = (view: ViewType, dayDate: Date | null): string => {
   if (view === 'day' && dayDate) {
-    const dateStr = dayDate.toISOString().split('T')[0];
-    return `#day-${dateStr}`;
+    return `#day-${formatDate(dayDate)}`;
   }
   return `#${view}`;
 };
@@ -103,27 +118,21 @@ export const useViewState = (user: User | null) => {
     }
     return null;
   });
-  const [todayViewDate, setTodayViewDate] = useState<Date>(() => {
-    if (savedViewState?.todayViewDate) {
-      const date = new Date(savedViewState.todayViewDate);
-      date.setHours(0, 0, 0, 0);
-      return date;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return today;
-  });
+  // Today view always starts on the actual current day - a saved date would be stale the next day
+  const [todayViewDate, setTodayViewDate] = useState<Date>(getToday);
   const [tomorrowViewDate, setTomorrowViewDate] = useState<Date>(() => {
+    const tomorrow = getTomorrow();
     if (savedViewState?.tomorrowViewDate) {
       const date = new Date(savedViewState.tomorrowViewDate);
       date.setHours(0, 0, 0, 0);
-      return date;
+      // Only restore a saved date that hasn't passed yet
+      if (!isNaN(date.getTime()) && date >= tomorrow) {
+        return date;
+      }
     }
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
     return tomorrow;
   });
+  const currentDayRef = useRef(formatDate(new Date()));
   const [searchQuery, setSearchQuery] = useState('');
   const saveTimeoutRef = useRef<number | null>(null);
 
@@ -256,6 +265,33 @@ export const useViewState = (user: User | null) => {
     previousUserRef.current = user;
     isInitialMount.current = false;
   }, [user, setCurrentView, currentView]);
+
+  // Roll the Today/Upcoming dates forward when the calendar day changes while the app stays open
+  // (e.g. a phone resuming the app the next morning), so Today doesn't keep showing yesterday
+  useEffect(() => {
+    const checkForDayChange = () => {
+      const todayStr = formatDate(new Date());
+      if (todayStr === currentDayRef.current) return;
+
+      const previousDay = parseLocalDate(currentDayRef.current);
+      const previousTomorrowStr = formatDate(
+        new Date(previousDay.getFullYear(), previousDay.getMonth(), previousDay.getDate() + 1)
+      );
+      logger.debug('[useViewState] Day changed, updating view dates:', currentDayRef.current, '->', todayStr);
+      currentDayRef.current = todayStr;
+      setTodayViewDate(getToday());
+      setTomorrowViewDate(prev => (formatDate(prev) === previousTomorrowStr ? getTomorrow() : prev));
+    };
+
+    const intervalId = window.setInterval(checkForDayChange, DAY_ROLLOVER_CHECK_MS);
+    document.addEventListener('visibilitychange', checkForDayChange);
+    window.addEventListener('focus', checkForDayChange);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', checkForDayChange);
+      window.removeEventListener('focus', checkForDayChange);
+    };
+  }, []);
 
   // Scroll to top when switching to 'today' view
   useEffect(() => {

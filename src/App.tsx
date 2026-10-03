@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Task, TaskUpdate } from './types';
 import { isSupabaseConfigured } from './utils/supabase';
 import { isDateToday, isDateTomorrow, isDateOverdue, formatDate } from './utils/dateUtils';
-import { loadTagColors, saveTasks } from './utils/supabaseStorage';
+import { loadTagColors } from './utils/supabaseStorage';
 import { useAuth } from './hooks/useAuth';
 import { useViewState } from './hooks/useViewState';
 import { useTaskManagement } from './hooks/useTaskManagement';
@@ -750,6 +750,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
 
       {deletedTask && (
         <UndoNotification
+          key={deletedTask.timeoutId}
           taskTitle={deletedTask.tasks.length > 1 
             ? `${deletedTask.task.title} (${deletedTask.tasks.length} tasks)`
             : deletedTask.task.title}
@@ -765,6 +766,7 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
 
       {completedTask && (
         <CompletionUndoNotification
+          key={completedTask.task.id}
           taskTitle={completedTask.task.title}
           onUndo={() => undoCompletion(updateTask)}
           onDismiss={() => setCompletedTask(null)}
@@ -818,9 +820,9 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
       {showTagManager && (
         <TagManager
           tasks={tasks}
-          onUpdateTasks={async (updatedTasks) => {
+          onUpdateTasks={(updatedTasks) => {
+            // The save effect in useTaskManagement persists the tasks that changed
             setTasks(updatedTasks);
-            await saveTasks(updatedTasks);
           }}
           onTagColorsChange={(updatedColors) => {
             setTagColors(updatedColors);

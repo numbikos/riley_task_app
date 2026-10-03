@@ -1,10 +1,11 @@
-import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks as addWeeksFns, subWeeks as subWeeksFns, addDays as addDaysFns, subDays as subDaysFns, startOfDay } from 'date-fns';
+import { isSameDay, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks as addWeeksFns, subWeeks as subWeeksFns, addDays as addDaysFns, subDays as subDaysFns, addMonths, addYears, startOfDay } from 'date-fns';
 
 /**
  * Parses a date string (YYYY-MM-DD) as a local date at midnight local time.
  * This ensures dates are interpreted in the user's timezone, not UTC.
+ * (`new Date('YYYY-MM-DD')` parses as UTC midnight, which is the previous day in US timezones.)
  */
-const parseLocalDate = (dateString: string): Date => {
+export const parseLocalDate = (dateString: string): Date => {
   const [year, month, day] = dateString.split('-').map(Number);
   // Create date at midnight local time
   return new Date(year, month - 1, day);
@@ -190,34 +191,37 @@ export const generateRecurringDates = (
   customFrequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 ): string[] => {
   const dates: string[] = [];
-  let currentDate = toLocalDate(startDate);
+  const start = toLocalDate(startDate);
   
   // For custom recurrence, use the customFrequency with multiplier
   const effectiveRecurrence = recurrence === 'custom' && customFrequency ? customFrequency : recurrence;
   const effectiveMultiplier = recurrence === 'custom' ? multiplier : 1;
   
+  // Each date is computed from the start date (not from the previous instance) so month-end
+  // dates clamp instead of drifting, e.g. monthly on Jan 31 -> Feb 28 -> Mar 31 (not Mar 3, Apr 3...)
   for (let i = 0; i < count; i++) {
-    dates.push(formatDate(currentDate));
-    
-    const nextDate = new Date(currentDate);
+    const step = i * effectiveMultiplier;
+    let date: Date;
     switch (effectiveRecurrence) {
       case 'daily':
-        nextDate.setDate(nextDate.getDate() + (1 * effectiveMultiplier));
+        date = addDaysFns(start, step);
         break;
       case 'weekly':
-        nextDate.setDate(nextDate.getDate() + (7 * effectiveMultiplier));
+        date = addDaysFns(start, 7 * step);
         break;
       case 'monthly':
-        nextDate.setMonth(nextDate.getMonth() + (1 * effectiveMultiplier));
+        date = addMonths(start, step);
         break;
       case 'quarterly':
-        nextDate.setMonth(nextDate.getMonth() + (3 * effectiveMultiplier));
+        date = addMonths(start, 3 * step);
         break;
       case 'yearly':
-        nextDate.setFullYear(nextDate.getFullYear() + (1 * effectiveMultiplier));
+        date = addYears(start, step);
         break;
+      default:
+        date = start;
     }
-    currentDate = nextDate;
+    dates.push(formatDate(date));
   }
   
   return dates;

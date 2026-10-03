@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadTasks, loadIncompleteTasks, loadCompletedTasks } from '../supabaseStorage';
+import { loadTasks, loadIncompleteTasks, loadCompletedTasks, loadTags, saveTasks } from '../supabaseStorage';
 import { logger } from '../logger';
 
 const { mockGetUser, mockGetSession, mockFrom } = vi.hoisted(() => ({
@@ -280,5 +280,74 @@ describe('loadCompletedTasks', () => {
 
     expect(result.tasks).toHaveLength(0);
     expect(result.total).toBe(0);
+  });
+});
+
+describe('loadTags', () => {
+  beforeEach(() => {
+    mockGetUser.mockReset();
+    mockFrom.mockReset();
+  });
+
+  it('collects tags from all task pages and from tag_colors', async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: 'user-1', email: 'user@example.com' } },
+      error: null,
+    });
+
+    const firstPage = Array.from({ length: 1000 }, (_, i) => ({ tags: i === 0 ? ['Work'] : [] }));
+    const secondPage = [{ tags: ['home'] }, { tags: null }];
+    const mockRange = vi.fn()
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: secondPage, error: null })
+      .mockResolvedValueOnce({ data: [], error: null });
+    const tasksQuery = {
+      select: vi.fn(() => tasksQuery),
+      eq: vi.fn(() => tasksQuery),
+      order: vi.fn(() => tasksQuery),
+      range: mockRange,
+    };
+    const tagColorsQuery = {
+      select: vi.fn(() => tagColorsQuery),
+      eq: vi.fn().mockResolvedValue({ data: [{ tag: 'Errands' }], error: null }),
+    };
+    mockFrom.mockImplementation((table: string) => (table === 'tasks' ? tasksQuery : tagColorsQuery));
+
+    const tags = await loadTags();
+
+    expect(tasksQuery.select).toHaveBeenCalledWith('tags');
+    expect(mockRange).toHaveBeenNthCalledWith(2, 1000, 1999);
+    expect(tags.sort()).toEqual(['errands', 'home', 'work']);
+  });
+});
+
+describe('error reporting for sync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('saveTasks rejects instead of silently succeeding when there is no user', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'fetch failed' } });
+
+    await expect(saveTasks([{
+      id: '00000000-0000-4000-8000-000000000001',
+      title: 'Task',
+      dueDate: null,
+      completed: false,
+      subtasks: [],
+      tags: [],
+      createdAt: '2024-01-01T00:00:00.000Z',
+      lastModified: '2024-01-01T00:00:00.000Z',
+      recurrence: null,
+      recurrenceGroupId: null,
+    }])).rejects.toThrow();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('loadIncompleteTasks throws on auth errors when asked to', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'fetch failed' } });
+
+    await expect(loadIncompleteTasks({ throwOnError: true })).rejects.toThrow();
+    await expect(loadIncompleteTasks()).resolves.toEqual([]);
   });
 });

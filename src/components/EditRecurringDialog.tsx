@@ -32,6 +32,19 @@ export default function EditRecurringDialog({
   onAll, 
   onCancel 
 }: EditRecurringDialogProps) {
+  // "Does not repeat" stops the series instead of changing its frequency
+  const isStoppingRecurrence = newRecurrence === null;
+  const thisAndFollowingDescription = isStoppingRecurrence
+    ? (taskDueDate
+      ? `Stops repeating from ${getDateDisplay(taskDueDate)} onwards. Later open occurrences are removed; past completed tasks remain.`
+      : 'Stops repeating from this task onwards. Later open occurrences are removed; past completed tasks remain.')
+    : (taskDueDate
+      ? `Changes frequency from ${getDateDisplay(taskDueDate)} onwards. Past completed tasks keep the old frequency.`
+      : 'Changes frequency from this task onwards. Past completed tasks keep the old frequency.');
+  const allDescription = isStoppingRecurrence
+    ? 'Stops repeating and removes all other open occurrences. Completed tasks remain.'
+    : "Regenerates the entire series with the new frequency, starting from the first task's date.";
+
   return (
     <div 
       className="modal-overlay" 
@@ -106,9 +119,7 @@ export default function EditRecurringDialog({
           >
             <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>This and Following Tasks</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-              {taskDueDate 
-                ? `Changes frequency from ${getDateDisplay(taskDueDate)} onwards. Past completed tasks keep the old frequency.`
-                : 'Changes frequency from this task onwards. Past completed tasks keep the old frequency.'}
+              {thisAndFollowingDescription}
             </div>
           </button>
 
@@ -139,7 +150,7 @@ export default function EditRecurringDialog({
           >
             <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>All Tasks</div>
             <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-              Regenerates the entire series with the new frequency, starting from the first task's date.
+              {allDescription}
             </div>
           </button>
 

@@ -7,6 +7,8 @@ import {
   findLastInstance,
   getTasksToRemoveForRegeneration,
   extendRecurringTaskInstances,
+  getNextRecurrenceDate,
+  haveSubtasksChanged,
 } from '../utils/recurringTaskHelpers';
 import { formatDate } from '../utils/dateUtils';
 import { logger } from '../utils/logger';
@@ -67,6 +69,55 @@ export const useRecurringTasks = (
     
     const dueDateChanged = updates.dueDate !== undefined && updates.dueDate !== existingTask.dueDate;
     const isDragDrop = updates._dragDrop === true;
+    // Local calendar date (YYYY-MM-DD) for comparing against task due dates
+    const todayStr = formatDate(new Date());
+    const isOnOrAfterToday = (task: Task) => !!task.dueDate && task.dueDate.split('T')[0] >= todayStr;
+
+    // "Does not repeat" selected on a recurring task: turn this instance into a regular task
+    // and remove the remaining open instances of the series
+    if (!isDragDrop && updates.recurrence === null && existingTask.recurrence) {
+      const existingDateStr = existingTask.dueDate ? existingTask.dueDate.split('T')[0] : null;
+      const tasksToRemove = existingTask.recurrenceGroupId
+        ? tasks.filter(task =>
+            task.id !== id &&
+            task.recurrenceGroupId === existingTask.recurrenceGroupId &&
+            !task.completed &&
+            (editMode === 'all' || !existingDateStr || !task.dueDate || task.dueDate.split('T')[0] >= existingDateStr)
+          )
+        : [];
+      const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
+
+      if (taskIdsToRemove.size > 0) {
+        logger.debug(`[Recurring Task] Recurrence removed - deleting ${taskIdsToRemove.size} remaining instances`);
+        deleteTasks(Array.from(taskIdsToRemove)).catch(error => {
+          logger.error('[Recurring Task] Failed to delete remaining instances from database:', error);
+        });
+      }
+
+      const { _dragDrop, _skipSubtaskPropagation, ...cleanUpdates } = updates;
+      const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
+      setTasks(tasks
+        .filter(task => !taskIdsToRemove.has(task.id))
+        .map(task => {
+          if (task.id !== id) return task;
+          const updatedTask: Task = {
+            ...task,
+            ...cleanUpdates,
+            recurrence: null,
+            recurrenceGroupId: null,
+            recurrenceMultiplier: undefined,
+            customFrequency: undefined,
+            isLastInstance: false,
+            autoRenew: false,
+            lastModified: new Date().toISOString(),
+          };
+          if (normalizedTags) {
+            updatedTask.tags = normalizedTags;
+          }
+          return updatedTask;
+        }));
+      return;
+    }
     
     // Only regenerate if recurrence settings changed OR if editing the first instance's due date
     // BUT: Skip regeneration if this is a drag-and-drop operation
@@ -127,13 +178,9 @@ export const useRecurringTasks = (
       setTasks([...remainingTasks, ...newTasks]);
     } else if (!isDragDrop && dueDateChanged && existingTask.recurrence && existingTask.recurrenceGroupId && updates.dueDate && isFirstInstance) {
       // Only regenerate if editing the FIRST instance's due date
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const tasksToRemove = tasks.filter(task => {
         if (task.recurrenceGroupId !== existingTask.recurrenceGroupId) return false;
-        const taskDate = new Date(task.dueDate!);
-        taskDate.setHours(0, 0, 0, 0);
-        return taskDate >= today || (!task.completed && taskDate < today);
+        return isOnOrAfterToday(task) || !task.completed;
       });
       const taskIdsToRemove = new Set(tasksToRemove.map(t => t.id));
       const remainingTasks = tasks.filter(task => !taskIdsToRemove.has(task.id));
@@ -164,13 +211,12 @@ export const useRecurringTasks = (
       // Regular update - check if this is a recurring task that should propagate updates
       if (existingTask.recurrenceGroupId && !isDragDrop) {
         // For recurring tasks, propagate title, tags, and optionally subtasks to future instances
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
         const normalizedTags = updates.tags ? normalizeTags(updates.tags) : undefined;
         
-        // Check if subtasks changed and should be propagated
-        const subtasksChanged = updates.subtasks !== undefined && 
-          JSON.stringify(updates.subtasks) !== JSON.stringify(existingTask.subtasks);
+        // Check if the subtask list changed and should be propagated
+        // (checking off a subtask only affects this instance)
+        const subtasksChanged = updates.subtasks !== undefined &&
+          haveSubtasksChanged(updates.subtasks, existingTask.subtasks);
         const skipSubtaskPropagation = updates._skipSubtaskPropagation === true;
         
         // Extract fields that should propagate
@@ -197,9 +243,7 @@ export const useRecurringTasks = (
             return updatedTask;
           } else if (task.recurrenceGroupId === existingTask.recurrenceGroupId) {
             // For other instances in the group, propagate title, tags, and subtasks (if user confirmed)
-            const taskDate = new Date(task.dueDate!);
-            taskDate.setHours(0, 0, 0, 0);
-            const isFuture = taskDate >= today || (!task.completed && taskDate < today);
+            const isFuture = isOnOrAfterToday(task) || !task.completed;
             
             if (isFuture && Object.keys(propagatingUpdates).length > 0) {
               const updatedTask = { ...task, ...propagatingUpdates, lastModified: new Date().toISOString() };
@@ -261,10 +305,11 @@ export const useRecurringTasks = (
       return;
     }
 
-    // Calculate next start date (day after current due date)
-    const currentDate = new Date(task.dueDate);
-    currentDate.setDate(currentDate.getDate() + 1);
-    const nextStartDate = formatDate(currentDate);
+    // Next batch starts at the next occurrence after this (last) instance
+    const nextStartDate = getNextRecurrenceDate(task, task.dueDate);
+    if (!nextStartDate) {
+      return;
+    }
     
     // Generate next batch of instances
     const newRecurrenceGroupId = generateId();
@@ -273,13 +318,18 @@ export const useRecurringTasks = (
         ...task,
         recurrenceGroupId: newRecurrenceGroupId,
         createdAt: task.createdAt, // Preserve original creation date
+        subtasks: task.subtasks.map(st => ({ ...st, completed: false })),
       },
       nextStartDate,
       task.recurrence
     );
 
-    // Add new tasks
-    setTasks(currentTasks => [...currentTasks, ...newTasks]);
+    // Add new tasks, and clear the "last instance" flag on the completed task so that
+    // undoing and re-completing it doesn't create a second batch
+    setTasks(currentTasks => [
+      ...currentTasks.map(t => t.id === task.id ? { ...t, isLastInstance: false } : t),
+      ...newTasks,
+    ]);
 
     // Show notification
     setAutoRenewNotification({ taskTitle: task.title, count: newTasks.length });

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Task, getTagColor } from '../types';
 import { calculateTaskStats, getCompletionHistory } from '../utils/statsUtils';
-import { formatFullDate } from '../utils/dateUtils';
+import { formatFullDate, parseLocalDate } from '../utils/dateUtils';
 
 interface StatsViewProps {
   tasks: Task[];
@@ -18,7 +18,8 @@ export default function StatsView({ tasks, tagColors }: StatsViewProps) {
 
   // Format day label for chart (e.g., "Mon")
   const formatDayLabel = (dateStr: string): string => {
-    const date = new Date(dateStr);
+    // Parse as local date - new Date('YYYY-MM-DD') is UTC and shows the previous weekday in US timezones
+    const date = parseLocalDate(dateStr);
     return date.toLocaleDateString(undefined, { weekday: 'short' });
   };
 

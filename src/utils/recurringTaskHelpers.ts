@@ -1,4 +1,4 @@
-import { Task, RecurrenceType } from '../types';
+import { Task, Subtask, RecurrenceType } from '../types';
 import { generateRecurringDates, formatDate } from './dateUtils';
 import { generateId } from './supabaseStorage';
 
@@ -9,6 +9,15 @@ const RECURRING_INSTANCE_COUNT = 10;
  */
 const normalizeTags = (tags: string[]): string[] => {
   return tags.map(tag => tag.toLowerCase());
+};
+
+/**
+ * Checks whether the subtask list itself changed (added/removed/renamed/reordered),
+ * ignoring completion state. Checking off a subtask is not a structural change.
+ */
+export const haveSubtasksChanged = (a: Subtask[], b: Subtask[]): boolean => {
+  const structure = (subtasks: Subtask[]) => JSON.stringify(subtasks.map(st => [st.id, st.text]));
+  return structure(a) !== structure(b);
 };
 
 /**
@@ -101,9 +110,8 @@ export const getTasksToRemoveForRegeneration = (
   tasks: Task[],
   recurrenceGroupId: string
 ): Task[] => {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split('T')[0];
+  // Local date (not UTC) so "today" matches the user's calendar day
+  const todayStr = formatDate(new Date());
   
   return tasks.filter(task => {
     if (task.recurrenceGroupId !== recurrenceGroupId) return false;
@@ -124,6 +132,18 @@ export const getTasksToRemoveForRegeneration = (
 };
 
 /**
+ * Gets the next occurrence date after a given instance date, following the task's recurrence
+ * (e.g. weekly on a Monday -> the following Monday). Returns null if the task doesn't recur.
+ */
+export const getNextRecurrenceDate = (task: Task, afterDate: string): string | null => {
+  if (!task.recurrence || !afterDate) return null;
+  const multiplier = task.recurrence === 'custom' ? (task.recurrenceMultiplier ?? 1) : 1;
+  const customFreq = task.recurrence === 'custom' ? task.customFrequency : undefined;
+  const [, next] = generateRecurringDates(afterDate.split('T')[0], task.recurrence, 2, multiplier, customFreq);
+  return next ?? null;
+};
+
+/**
  * Extends a recurring task by creating the next batch of instances
  */
 export const extendRecurringTaskInstances = (
@@ -140,22 +160,21 @@ export const extendRecurringTaskInstances = (
     return [];
   }
 
-  // Calculate next start date (day after last instance's due date)
-  const lastDateStr = lastInstance.dueDate;
-  const [year, month, day] = lastDateStr.split('-').map(Number);
-  const lastDate = new Date(year, month - 1, day);
-  lastDate.setDate(lastDate.getDate() + 1);
-  const nextStartDate = formatDate(lastDate);
+  // Next batch starts at the next occurrence after the last instance
+  const nextStartDate = getNextRecurrenceDate(task, lastInstance.dueDate);
+  if (!nextStartDate) {
+    return [];
+  }
 
   // Generate next batch of instances
   return createRecurringTaskInstances(
     {
       ...task,
       recurrenceGroupId: task.recurrenceGroupId, // Keep same group ID
+      subtasks: task.subtasks.map(st => ({ ...st, completed: false })),
     },
     nextStartDate,
     task.recurrence,
     RECURRING_INSTANCE_COUNT
   );
 };
-

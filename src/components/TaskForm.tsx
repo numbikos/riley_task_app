@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Task, Subtask, TaskUpdate, getTagColor, RecurrenceType } from '../types';
 import { generateId, loadTags, loadTagColors } from '../utils/supabaseStorage';
 import { formatDate } from '../utils/dateUtils';
+import { haveSubtasksChanged } from '../utils/recurringTaskHelpers';
 import { logger } from '../utils/logger';
 import { Trash2 } from 'lucide-react';
 
@@ -35,21 +36,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
   const tagDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Load available tags - they're stored lowercase, display with proper case
-    const loadTagsData = async () => {
-      setIsLoadingTags(true);
-      try {
-        const tags = await loadTags();
-        setAvailableTags(tags);
-        logger.debug('[TaskForm] Loaded tags:', tags);
-      } catch (error) {
-        logger.error('[TaskForm] Failed to load tags:', error);
-        setAvailableTags([]);
-      } finally {
-        setIsLoadingTags(false);
-      }
-    };
-    
+    // Available tags are loaded by the effect below (it also runs on mount)
     const loadColorsData = async () => {
       try {
         const colors = await loadTagColors();
@@ -60,21 +47,21 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
       }
     };
     
-    loadTagsData();
     loadColorsData();
   }, []);
 
   // Reload tags when form opens (in case new tags were added)
   useEffect(() => {
     // Reload tags whenever the form is shown (when task changes or form opens)
+    // Tags are stored lowercase, displayed with proper case
     const reloadTags = async () => {
       setIsLoadingTags(true);
       try {
         const tags = await loadTags();
         setAvailableTags(tags);
-        logger.debug('[TaskForm] Reloaded tags:', tags);
+        logger.debug('[TaskForm] Loaded tags:', tags);
       } catch (error) {
-        logger.error('[TaskForm] Failed to reload tags:', error);
+        logger.error('[TaskForm] Failed to load tags:', error);
       } finally {
         setIsLoadingTags(false);
       }
@@ -268,36 +255,6 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
       }
     }
 
-    // Check if we're editing a recurring task and subtasks have changed
-    if (task && task.recurrenceGroupId) {
-      const subtasksChanged = JSON.stringify(subtasks) !== JSON.stringify(task.subtasks);
-      
-      if (subtasksChanged) {
-        const confirmed = window.confirm(
-          `Update subtasks for all future instances of "${task.title}"?`
-        );
-        
-        if (!confirmed) {
-          // User chose not to propagate - update current task only, don't propagate subtasks
-          // We'll update the task directly without going through propagation logic
-          const taskData: TaskUpdate = {
-            title: title.trim(),
-            dueDate: dueDate || task.dueDate || null,
-            completed,
-            tags,
-            subtasks,
-            recurrence: task.recurrence,
-            recurrenceMultiplier: task.recurrenceMultiplier,
-            customFrequency: task.customFrequency,
-            autoRenew: task.autoRenew,
-            _skipSubtaskPropagation: true, // Flag to skip subtask propagation
-          };
-          onSave(taskData);
-          return;
-        }
-      }
-    }
-
     // Validate recurrence multiplier before submission
     if (recurrence === 'custom') {
       const inputValue = parseInt(recurrenceMultiplierInput, 10);
@@ -316,7 +273,7 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
       setRecurrenceMultiplierError(''); // Clear error if not using custom recurrence
     }
 
-    const taskData: Partial<Task> = {
+    const taskData: TaskUpdate = {
       title: title.trim(),
       dueDate: dueDate || null,
       completed,
@@ -327,6 +284,17 @@ export default function TaskForm({ task, onSave, onCancel, onExtendRecurring, in
       customFrequency: recurrence === 'custom' ? customFrequency : undefined,
       autoRenew: recurrence ? true : undefined, // Always auto-renew for recurring tasks
     };
+
+    // Check if we're editing a recurring task and the subtask list has changed
+    if (task && task.recurrenceGroupId && haveSubtasksChanged(subtasks, task.subtasks)) {
+      const confirmed = window.confirm(
+        `Update subtasks for all future instances of "${task.title}"?`
+      );
+      if (!confirmed) {
+        // User chose not to propagate - update current task only (other edits still apply)
+        taskData._skipSubtaskPropagation = true;
+      }
+    }
 
     onSave(taskData);
   };

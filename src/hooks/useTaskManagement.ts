@@ -11,9 +11,12 @@ const AUTH_DELAY_MS = 300;
 const LOAD_TIMEOUT_MS = 30000;
 export const UNDO_TIMEOUT_MS = 3000;
 const COMPLETED_TASKS_PAGE_SIZE = 25;
+const RECENT_UPDATE_WINDOW_MS = 2000;
+const SAVE_RETRY_DELAYS_MS = [2000, 5000, 15000, 30000, 60000];
 const countCompletedTasks = (taskList: Task[]): number => {
   return taskList.reduce((count, task) => count + (task.completed ? 1 : 0), 0);
 };
+const serializeTask = (task: Task): string => JSON.stringify(task);
 
 interface DeletedTaskState {
   task: Task;
@@ -44,10 +47,42 @@ export const useTaskManagement = (user: User | null) => {
   const [isLoadingCompletedTasks, setIsLoadingCompletedTasks] = useState(false);
   const [completedTasksLoadError, setCompletedTasksLoadError] = useState<string | null>(null);
 
+  const [saveRetryTick, setSaveRetryTick] = useState(0);
+
   const isSavingRef = useRef(false);
-  const lastSavedTasksRef = useRef<string>('');
+  const saveFailureCountRef = useRef(0);
+  const saveRetryTimeoutRef = useRef<number | null>(null);
+  // Per-task snapshot of what the database holds (as of the last load or successful save).
+  // Only tasks that differ from their snapshot are saved, and a reload never overwrites them.
+  const savedTaskSnapshotsRef = useRef<Map<string, string>>(new Map());
   const isLoadingUserDataRef = useRef(false);
   const recentlyUpdatedTasksRef = useRef<Map<string, number>>(new Map()); // Track task IDs and timestamps
+  // Latest tasks, for async callbacks registered in effects (avoids stale closures)
+  const tasksRef = useRef<Task[]>(tasks);
+  tasksRef.current = tasks;
+
+  const hasUnsavedChanges = (task: Task): boolean => {
+    return savedTaskSnapshotsRef.current.get(task.id) !== serializeTask(task);
+  };
+
+  const markTasksAsSaved = (taskList: Task[]) => {
+    taskList.forEach(task => savedTaskSnapshotsRef.current.set(task.id, serializeTask(task)));
+  };
+
+  const resetSavedSnapshots = (taskList: Task[]) => {
+    savedTaskSnapshotsRef.current = new Map(taskList.map(task => [task.id, serializeTask(task)]));
+  };
+
+  // IDs of tasks edited locally within the last RECENT_UPDATE_WINDOW_MS (older entries are pruned)
+  const getRecentlyUpdatedIds = (): Set<string> => {
+    const cutoff = Date.now() - RECENT_UPDATE_WINDOW_MS;
+    for (const [taskId, timestamp] of recentlyUpdatedTasksRef.current.entries()) {
+      if (timestamp < cutoff) {
+        recentlyUpdatedTasksRef.current.delete(taskId);
+      }
+    }
+    return new Set(recentlyUpdatedTasksRef.current.keys());
+  };
 
   // Load user data when authenticated (split loading: incomplete first, then first page of completed)
   const loadUserData = async (showNotification = false) => {
@@ -108,8 +143,8 @@ export const useTaskManagement = (user: User | null) => {
       setCompletedTasksTotal(completedTotal);
       setHasMoreCompletedTasks(completedTasksPage.length < completedTotal);
 
-      // Update the last saved ref to prevent triggering save after initial load
-      lastSavedTasksRef.current = JSON.stringify(allTasks);
+      // Record what the database holds to prevent triggering save after initial load
+      resetSavedSnapshots(allTasks);
       if (showNotification) {
         const totalLoaded = incompleteTasks.length + completedTasksPage.length;
         setMigrationNotification(`Refreshed! Loaded ${totalLoaded} task${totalLoaded !== 1 ? 's' : ''}`);
@@ -145,7 +180,7 @@ export const useTaskManagement = (user: User | null) => {
       setHasLoadedTasks(true);
       // Set empty tasks so app can still function
       setTasks([]);
-      lastSavedTasksRef.current = JSON.stringify([]);
+      resetSavedSnapshots([]);
       // Reset completed tasks pagination state
       setCompletedTasksLoaded(0);
       setCompletedTasksTotal(null);
@@ -179,11 +214,13 @@ export const useTaskManagement = (user: User | null) => {
       );
 
       if (newCompletedTasks.length > 0) {
-        // Append new completed tasks to existing tasks
+        // Append new completed tasks to existing tasks (skipping any already loaded, e.g. if
+        // a task was completed on another device and shifted the page boundaries)
         setTasks(currentTasks => {
-          const updatedTasks = [...currentTasks, ...newCompletedTasks];
-          lastSavedTasksRef.current = JSON.stringify(updatedTasks);
-          return updatedTasks;
+          const existingIds = new Set(currentTasks.map(t => t.id));
+          const uniqueNewTasks = newCompletedTasks.filter(t => !existingIds.has(t.id));
+          markTasksAsSaved(uniqueNewTasks);
+          return [...currentTasks, ...uniqueNewTasks];
         });
 
         const newLoaded = offset + newCompletedTasks.length;
@@ -210,31 +247,41 @@ export const useTaskManagement = (user: User | null) => {
     currentTasks: Task[],
     updatedIncompleteTasks: Task[],
     remotelyModifiedTasks: Task[],
+    savedSnapshots: Map<string, string>,
+    recentlyUpdatedIds: Set<string>,
     source: string
   ): Task[] => {
     if (!Array.isArray(currentTasks)) {
       logger.warn(`[${source}] currentTasks is not an array, using reloaded incomplete tasks`);
-      lastSavedTasksRef.current = JSON.stringify(updatedIncompleteTasks);
+      resetSavedSnapshots(updatedIncompleteTasks);
       return updatedIncompleteTasks;
     }
 
-    const recentlyUpdatedIds = Array.from(recentlyUpdatedTasksRef.current.keys());
+    const currentTasksById = new Map(currentTasks.map(t => [t.id, t]));
+    // Keep the local version of a task if it was just edited or has changes not yet saved
+    // (e.g. a save was blocked while this reload was in flight). Decisions use copies taken
+    // before the merge so they stay the same if React re-runs this state updater.
+    const shouldKeepLocal = (task: Task) =>
+      recentlyUpdatedIds.has(task.id) || savedSnapshots.get(task.id) !== serializeTask(task);
 
     const mergedIncompleteTasks = updatedIncompleteTasks.map(reloadedTask => {
-      const localTask = currentTasks.find(t => t.id === reloadedTask.id);
-      if (localTask && recentlyUpdatedIds.includes(reloadedTask.id)) {
+      const localTask = currentTasksById.get(reloadedTask.id);
+      if (localTask && shouldKeepLocal(localTask)) {
         logger.debug(`[${source}] Preserving local state for recently updated task: ${reloadedTask.id}`);
         return localTask;
       }
+      markTasksAsSaved([reloadedTask]);
       return reloadedTask;
     });
 
     const reloadedIds = new Set(updatedIncompleteTasks.map(t => t.id));
     const remotelyModifiedIds = new Set(remotelyModifiedTasks.map(t => t.id));
 
+    // Local incomplete tasks missing from the reload are kept only if they were just edited or
+    // haven't been saved yet (e.g. created during the reload); otherwise they were deleted elsewhere
     const missingLocalIncompleteTasks = currentTasks
       .filter(t => !t.completed && !reloadedIds.has(t.id) && !remotelyModifiedIds.has(t.id))
-      .filter(t => recentlyUpdatedIds.includes(t.id));
+      .filter(shouldKeepLocal);
 
     // Keep existing completed tasks that weren't reloaded or remotely modified
     const currentCompletedTasks = currentTasks.filter(
@@ -246,15 +293,14 @@ export const useTaskManagement = (user: User | null) => {
     if (remotelyCompletedTasks.length > 0) {
       logger.debug(`[${source}] Adding ${remotelyCompletedTasks.length} tasks completed on another device`);
     }
+    markTasksAsSaved(remotelyCompletedTasks);
 
-    const finalTasks = [
+    return [
       ...mergedIncompleteTasks,
       ...missingLocalIncompleteTasks,
       ...currentCompletedTasks,
       ...remotelyCompletedTasks,
     ];
-    lastSavedTasksRef.current = JSON.stringify(finalTasks);
-    return finalTasks;
   };
 
   const refreshIncompleteTasks = async (source: string) => {
@@ -267,27 +313,39 @@ export const useTaskManagement = (user: User | null) => {
     try {
       // Capture current tasks snapshot for detecting remotely-modified tasks
       // We need this before the async load to know which tasks might have been modified elsewhere
-      const currentTasksSnapshot = tasks;
-      const recentlyUpdatedIds = Array.from(recentlyUpdatedTasksRef.current.keys());
+      const currentTasksSnapshot = tasksRef.current;
+      const recentlyUpdatedIds = getRecentlyUpdatedIds();
 
-      const updatedIncompleteTasks = await loadIncompleteTasks();
+      // Throw on failure so a network/auth error aborts the refresh instead of looking like
+      // every task was deleted
+      const updatedIncompleteTasks = await loadIncompleteTasks({ throwOnError: true });
       logger.debug(`[${source}] Reloaded ${updatedIncompleteTasks.length} incomplete tasks`);
 
       // Find tasks that were locally incomplete but missing from reload (and not recently updated locally)
       // These are candidates for being completed/modified on another device
       const reloadedIds = new Set(updatedIncompleteTasks.map(t => t.id));
       const potentiallyRemotelyModifiedIds = currentTasksSnapshot
-        .filter(t => !t.completed && !reloadedIds.has(t.id) && !recentlyUpdatedIds.includes(t.id))
+        .filter(t => !t.completed && !reloadedIds.has(t.id) && !recentlyUpdatedIds.has(t.id))
+        .filter(t => savedTaskSnapshotsRef.current.has(t.id)) // never-saved tasks can't exist remotely
         .map(t => t.id);
 
       // Fetch current state of these tasks from the database
       let remotelyModifiedTasks: Task[] = [];
       if (potentiallyRemotelyModifiedIds.length > 0) {
         logger.debug(`[${source}] Fetching ${potentiallyRemotelyModifiedIds.length} potentially remotely-modified tasks`);
-        remotelyModifiedTasks = await loadTasksByIds(potentiallyRemotelyModifiedIds);
+        remotelyModifiedTasks = await loadTasksByIds(potentiallyRemotelyModifiedIds, { throwOnError: true });
       }
 
-      setTasks(currentTasks => mergeIncompleteTasks(currentTasks, updatedIncompleteTasks, remotelyModifiedTasks, source));
+      const savedSnapshots = new Map(savedTaskSnapshotsRef.current);
+      const recentlyUpdatedIdsAtMerge = getRecentlyUpdatedIds();
+      setTasks(currentTasks => mergeIncompleteTasks(
+        currentTasks,
+        updatedIncompleteTasks,
+        remotelyModifiedTasks,
+        savedSnapshots,
+        recentlyUpdatedIdsAtMerge,
+        source
+      ));
     } catch (error) {
       logger.error(`[${source}] Error reloading tasks:`, error);
     } finally {
@@ -325,40 +383,61 @@ export const useTaskManagement = (user: User | null) => {
       // Reset tasks when user logs out
       setTasks([]);
       setHasLoadedTasks(false);
-      lastSavedTasksRef.current = '';
+      resetSavedSnapshots([]);
     }
   }, [user]);
 
-  // Save tasks to Supabase whenever they change
+  // Save changed tasks to Supabase whenever they change
   useEffect(() => {
     if (!user || !hasLoadedTasks || isLoadingFromDatabase || isSavingRef.current) {
       return;
     }
 
-    // Check if tasks actually changed by comparing serialized versions
-    const currentTasksJson = JSON.stringify(tasks);
-    if (currentTasksJson === lastSavedTasksRef.current) {
+    // Only save tasks that differ from what the database holds
+    const changedTasks = tasks.filter(hasUnsavedChanges);
+    if (changedTasks.length === 0) {
       logger.debug('[Save Effect] Skipping save - tasks unchanged');
       return;
     }
 
-    logger.debug(`[Save Effect] Saving ${tasks.length} tasks to Supabase`);
+    logger.debug(`[Save Effect] Saving ${changedTasks.length} changed tasks to Supabase`);
     isSavingRef.current = true;
-    lastSavedTasksRef.current = currentTasksJson;
+    const savedSnapshots = changedTasks.map(task => [task.id, serializeTask(task)] as const);
     
-    saveTasks(tasks)
+    saveTasks(changedTasks)
       .then(() => {
         logger.debug('[Save Effect] Successfully saved tasks');
+        savedSnapshots.forEach(([id, snapshot]) => savedTaskSnapshotsRef.current.set(id, snapshot));
+        isSavingRef.current = false;
+        saveFailureCountRef.current = 0;
+        // Changes made while this save was in flight were skipped above - re-run to save them
+        setSaveRetryTick(tick => tick + 1);
       })
       .catch(error => {
+        // Snapshots are left unchanged, so the failed tasks stay unsaved; retry with backoff
+        // (e.g. phone woke up with a flaky connection)
         logger.error('[Save Effect] Failed to save tasks:', error);
-        // Reset the ref on error so we can retry
-        lastSavedTasksRef.current = '';
-      })
-      .finally(() => {
         isSavingRef.current = false;
+        const delay = SAVE_RETRY_DELAYS_MS[Math.min(saveFailureCountRef.current, SAVE_RETRY_DELAYS_MS.length - 1)];
+        saveFailureCountRef.current += 1;
+        if (saveRetryTimeoutRef.current !== null) {
+          clearTimeout(saveRetryTimeoutRef.current);
+        }
+        saveRetryTimeoutRef.current = window.setTimeout(() => {
+          saveRetryTimeoutRef.current = null;
+          setSaveRetryTick(tick => tick + 1);
+        }, delay);
       });
-  }, [tasks, user, hasLoadedTasks, isLoadingFromDatabase]);
+  }, [tasks, user, hasLoadedTasks, isLoadingFromDatabase, saveRetryTick]);
+
+  // Cancel a pending save retry on unmount
+  useEffect(() => {
+    return () => {
+      if (saveRetryTimeoutRef.current !== null) {
+        clearTimeout(saveRetryTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Real-time subscription for task updates
   useEffect(() => {
@@ -648,7 +727,7 @@ export const useTaskManagement = (user: User | null) => {
 
       // Save restored tasks to database
       try {
-        await saveTasks(restoredTasks);
+        await saveTasks(deletedTask.tasks);
         logger.debug(`[undoDelete] Successfully restored ${deletedTask.tasks.length} task(s) to database`);
       } catch (error) {
         logger.error('[undoDelete] Failed to restore tasks to database:', error);

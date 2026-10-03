@@ -84,7 +84,7 @@ export const useAuth = () => {
           return;
         }
         
-        setUser(user);
+        setUser(prevUser => (prevUser && user && prevUser.id === user.id ? prevUser : user));
         setLoading(false);
       } catch (error) {
         logger.error('[useAuth] Exception checking user:', error);
@@ -110,7 +110,10 @@ export const useAuth = () => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return;
-      setUser(session?.user ?? null);
+      // Token refreshes and tab refocus re-emit the same user as a new object. Keep the existing
+      // object so effects keyed on `user` (full task reload, realtime resubscribe) don't re-run.
+      const nextUser = session?.user ?? null;
+      setUser(prevUser => (prevUser && nextUser && prevUser.id === nextUser.id ? prevUser : nextUser));
     });
 
     return () => {

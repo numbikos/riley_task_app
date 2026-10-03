@@ -37,7 +37,7 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
 - **Completing Tasks**:
   - Check the checkbox to mark a task as complete
   - If a task has incomplete subtasks, you'll be prompted to confirm completion
-  - An undo notification appears after completing a task (5 second timeout)
+  - An undo notification appears after completing a task (3 second timeout)
 - **Editing Tasks**:
   - Click "Edit" or click on a task card to modify it
   - For recurring tasks, changes to title, tags, and subtasks can propagate to future instances
@@ -47,7 +47,7 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
   - For recurring tasks, a dialog appears with options:
     - Delete All Future Occurrences (from selected date onwards)
     - Delete All Open Occurrences (all incomplete tasks)
-  - An undo notification appears with a 5-second timeout
+  - An undo notification appears with a 3-second timeout
 - **Rescheduling Tasks**:
   - In Week view, drag tasks between days to reschedule them
   - Or edit a task and change its due date
@@ -56,8 +56,8 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
 
 - **Recurrence Patterns**: Daily, Weekly, Monthly, Quarterly, Yearly, or Custom intervals
 - **Custom Recurrence**: Set a multiplier (1-50) and frequency (Days, Weeks, Months, Quarters, Years)
-- **Auto-Creation**: Creates 50 instances automatically when a recurring task is created
-- **Auto-Renewal**: When the last instance of a recurring task with auto-renewal enabled is completed, automatically creates the next 50 instances
+- **Auto-Creation**: Creates 10 instances automatically when a recurring task is created
+- **Auto-Renewal**: When the last instance of a recurring task with auto-renewal enabled is completed, automatically creates the next 10 instances
   - Shows a notification when auto-renewal occurs
 - **Editing Recurring Tasks**:
   - Changes to title, tags, and subtasks can propagate to all future instances
@@ -113,8 +113,8 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
 
 ### Undo Functionality
 
-- **Undo Delete**: 5-second timeout to restore deleted tasks
-- **Undo Completion**: 5-second timeout to uncomplete tasks
+- **Undo Delete**: 3-second timeout to restore deleted tasks
+- **Undo Completion**: 3-second timeout to uncomplete tasks
 - Notifications appear at the bottom of the screen
 
 ### User Interface
@@ -210,7 +210,7 @@ The app provides several ways to navigate:
    - **Recurrence** (optional - requires a due date):
      - Select from Daily, Weekly, Monthly, Quarterly, Annually, or Custom
      - Custom recurrence: Set a number (1-50) and frequency (Days, Weeks, Months, Quarters, Years)
-     - Creates 50 instances automatically
+     - Creates 10 instances automatically
      - Auto-renewal is enabled by default for recurring tasks
    - **Tags** (optional - one tag per task):
      - Type tag name and press Enter to add
@@ -227,7 +227,7 @@ The app provides several ways to navigate:
 - **Completing Tasks**: 
   - Check the checkbox to mark a task as complete
   - If a task has incomplete subtasks, you'll be prompted to confirm completion
-  - An undo notification appears after completing a task (5 second timeout)
+  - An undo notification appears after completing a task (3 second timeout)
 - **Editing Tasks**:
   - Click "Edit" or click on a task card to modify it
   - For recurring tasks, changes to title, tags, and subtasks can propagate to future instances
@@ -237,7 +237,7 @@ The app provides several ways to navigate:
   - For recurring tasks, a dialog appears with options:
     - **Delete All Future Occurrences**: Deletes all incomplete tasks from the selected date onwards (completed and past tasks remain)
     - **Delete All Open Occurrences**: Deletes all incomplete tasks (past, present, and future; completed tasks remain)
-  - An undo notification appears with a 5-second timeout
+  - An undo notification appears with a 3-second timeout
 - **Rescheduling Tasks**:
   - In Week view, drag tasks between days to reschedule them
   - Or edit a task and change its due date
@@ -270,7 +270,7 @@ The app provides several ways to navigate:
 ### Recurring Tasks
 
 - **Creating Recurring Tasks**: Set a due date and select a recurrence pattern
-- **Auto-Renewal**: When you complete the last instance of a recurring task with auto-renewal enabled, the app automatically creates the next 50 instances
+- **Auto-Renewal**: When you complete the last instance of a recurring task with auto-renewal enabled, the app automatically creates the next 10 instances
   - A notification appears showing how many instances were created
 - **Editing Recurring Tasks**:
   - Changes to title, tags, and subtasks can propagate to all future instances

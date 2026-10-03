@@ -230,12 +230,14 @@ export default function TagManager({ tasks, onUpdateTasks, onTagColorsChange, on
         onTagColorsChange(updatedColors);
       }
 
-      // Update tasks in database and parent state
+      // Update tasks in parent state (saved to the database by the parent)
       onUpdateTasks(updatedTasks);
 
-      // Reload tags to ensure consistency
-      const reloadedTags = await loadTags();
-      setAvailableTags(reloadedTags.sort());
+      // Update the list locally - reloading from the database here could run before the
+      // renamed tasks are saved and bring back the old name
+      setAvailableTags(prevTags => Array.from(new Set(
+        prevTags.map(tag => (tag.toLowerCase() === normalizedOldTag ? normalizedNewTag : tag))
+      )).sort());
 
       // Clear editing state
       handleCancelEditingTag();

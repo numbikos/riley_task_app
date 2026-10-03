@@ -1,3 +1,6 @@
+// Run in a US timezone, where parsing 'YYYY-MM-DD' as UTC lands on the previous local day
+process.env.TZ = 'America/Los_Angeles';
+
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import StatsView from '../StatsView';
@@ -158,6 +161,14 @@ describe('StatsView', () => {
 
     // At least some day labels should be present (depends on current day)
     expect(foundLabels.length).toBeGreaterThan(0);
+  });
+
+  it("labels the last chart bar with today's weekday", () => {
+    const { container } = render(<StatsView {...defaultProps} />);
+
+    const labels = container.querySelectorAll('.stats-chart-label');
+    const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'short' });
+    expect(labels[labels.length - 1].textContent).toBe(todayLabel);
   });
 
   it('uses tag colors from props', () => {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { UNDO_TIMEOUT_MS } from '../hooks/useTaskManagement';
 
 interface CompletionUndoNotificationProps {
@@ -8,13 +8,18 @@ interface CompletionUndoNotificationProps {
 }
 
 export default function CompletionUndoNotification({ taskTitle, onUndo, onDismiss }: CompletionUndoNotificationProps) {
+  // Parent passes a new onDismiss each render; keep the latest in a ref so re-renders
+  // don't restart the auto-dismiss timer
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      onDismiss();
+      onDismissRef.current();
     }, UNDO_TIMEOUT_MS);
 
     return () => clearTimeout(timer);
-  }, [onDismiss]);
+  }, []);
 
   return (
     <div className="completion-undo-notification">

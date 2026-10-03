@@ -106,19 +106,26 @@ const taskToDbTask = (task: Task, userId: string, idMap?: Map<string, string>): 
 // Internal pagination batch size for loading large datasets
 const INTERNAL_PAGE_SIZE = 1000;
 
+interface LoadOptions {
+  /** Throw instead of returning an empty/partial list when loading fails */
+  throwOnError?: boolean;
+}
+
 /**
  * Load all incomplete tasks with internal pagination to avoid max-rows cap.
  * Transparent to caller - always returns complete array of incomplete tasks.
  */
-export const loadIncompleteTasks = async (): Promise<Task[]> => {
+export const loadIncompleteTasks = async (options: LoadOptions = {}): Promise<Task[]> => {
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError) {
       logger.error('[loadIncompleteTasks] Auth error:', authError);
+      if (options.throwOnError) throw new Error('Auth error while loading incomplete tasks');
       return [];
     }
     if (!user) {
       logger.debug('[loadIncompleteTasks] No user authenticated');
+      if (options.throwOnError) throw new Error('No user authenticated');
       return [];
     }
 
@@ -140,6 +147,7 @@ export const loadIncompleteTasks = async (): Promise<Task[]> => {
 
       if (error) {
         logger.error('[loadIncompleteTasks] Failed to load tasks:', error);
+        if (options.throwOnError) throw new Error('Failed to load incomplete tasks');
         return allTasks; // Return what we have so far
       }
 
@@ -162,6 +170,7 @@ export const loadIncompleteTasks = async (): Promise<Task[]> => {
     return allTasks;
   } catch (error) {
     logger.error('[loadIncompleteTasks] Exception:', error);
+    if (options.throwOnError) throw error;
     return [];
   }
 };
@@ -353,8 +362,9 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      // Throw so callers don't treat the tasks as saved (getUser also returns no user on network errors)
       logger.error('[saveTasks] Cannot save tasks: user not authenticated');
-      return;
+      throw new Error('Cannot save tasks: user not authenticated');
     }
 
     logger.debug(`[saveTasks] Saving ${tasks.length} tasks for user ${user.id}`);
@@ -428,29 +438,48 @@ export const saveTasks = async (tasks: Task[]): Promise<void> => {
 
 export const loadTags = async (): Promise<string[]> => {
   try {
-    const tasks = await loadTasks();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      logger.debug('[loadTags] No user authenticated');
+      return [];
+    }
+
     const allTags = new Set<string>();
-    
-    // Add tags from tasks
-    tasks.forEach(task => {
-      task.tags.forEach(tag => allTags.add(tag.toLowerCase()));
-    });
+
+    // Add tags from tasks - only the tags column, paginated to avoid the max-rows cap
+    let offset = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('tags')
+        .eq('user_id', user.id)
+        .order('id', { ascending: true })
+        .range(offset, offset + INTERNAL_PAGE_SIZE - 1);
+
+      if (error) {
+        logger.error('[loadTags] Failed to load tags from tasks:', error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+
+      data.forEach((row: { tags: string[] | null }) => {
+        (row.tags || []).forEach(tag => allTags.add(tag.toLowerCase()));
+      });
+      offset += data.length;
+    }
     
     // Also include tags from tag_colors table (even if not used by any tasks)
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: tagColorsData, error: tagColorsError } = await supabase
-        .from('tag_colors')
-        .select('tag')
-        .eq('user_id', user.id);
-      
-      if (tagColorsError) {
-        logger.error('[loadTags] Failed to load tags from tag_colors:', tagColorsError);
-      } else if (tagColorsData) {
-        tagColorsData.forEach((item: { tag: string }) => {
-          allTags.add(item.tag.toLowerCase());
-        });
-      }
+    const { data: tagColorsData, error: tagColorsError } = await supabase
+      .from('tag_colors')
+      .select('tag')
+      .eq('user_id', user.id);
+    
+    if (tagColorsError) {
+      logger.error('[loadTags] Failed to load tags from tag_colors:', tagColorsError);
+    } else if (tagColorsData) {
+      tagColorsData.forEach((item: { tag: string }) => {
+        allTags.add(item.tag.toLowerCase());
+      });
     }
     
     return Array.from(allTags);
@@ -576,17 +605,19 @@ export const deleteTagColor = async (tag: string): Promise<void> => {
  * Load specific tasks by their IDs.
  * Used to fetch the current state of tasks that may have been modified on another device.
  */
-export const loadTasksByIds = async (taskIds: string[]): Promise<Task[]> => {
+export const loadTasksByIds = async (taskIds: string[], options: LoadOptions = {}): Promise<Task[]> => {
   if (taskIds.length === 0) return [];
 
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError) {
       logger.error('[loadTasksByIds] Auth error:', authError);
+      if (options.throwOnError) throw new Error('Auth error while loading tasks by ID');
       return [];
     }
     if (!user) {
       logger.debug('[loadTasksByIds] No user authenticated');
+      if (options.throwOnError) throw new Error('No user authenticated');
       return [];
     }
 
@@ -600,6 +631,7 @@ export const loadTasksByIds = async (taskIds: string[]): Promise<Task[]> => {
 
     if (error) {
       logger.error('[loadTasksByIds] Failed to load tasks:', error);
+      if (options.throwOnError) throw new Error('Failed to load tasks by ID');
       return [];
     }
 
@@ -608,6 +640,7 @@ export const loadTasksByIds = async (taskIds: string[]): Promise<Task[]> => {
     return tasks;
   } catch (error) {
     logger.error('[loadTasksByIds] Exception:', error);
+    if (options.throwOnError) throw error;
     return [];
   }
 };
