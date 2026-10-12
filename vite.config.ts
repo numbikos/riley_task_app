@@ -14,10 +14,11 @@ const testExecArgv = process.allowedNodeEnvironmentFlags.has('--experimental-web
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: process.env.GITHUB_PAGES ? '/riley_task_app/' : '/',
+  base: '/',
   server: {
     port: 5181,
-    host: 'localhost', // Restrict to localhost only for security
+    host: 'localhost',
+    proxy: { '/api': 'http://127.0.0.1:3000' },
   },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(packageJson.version),
@@ -25,6 +26,7 @@ export default defineConfig({
   // @ts-ignore - Vitest config extension
   test: {
     globals: true,
+    include: ['src/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     execArgv: testExecArgv,

@@ -174,11 +174,11 @@ logger.error('[ModuleName] Failed to save:', error);
 
 ```typescript
 // GOOD - includes module prefix
-logger.debug('[useTaskManagement] Loading tasks from Supabase...');
+logger.debug('[useTaskManagement] Loading tasks from PostgreSQL...');
 logger.error('[loadTasks] Failed to load tasks:', error);
 
 // BAD - no module prefix
-logger.debug('Loading tasks from Supabase...');
+logger.debug('Loading tasks from PostgreSQL...');
 logger.error('Failed to load tasks:', error);
 ```
 
@@ -207,12 +207,12 @@ App.tsx (Main orchestrator)
 ```
 
 ### Data Flow
-1. **Source of Truth**: Supabase PostgreSQL database
+1. **Source of Truth**: Railway PostgreSQL database
 2. **Working State**: React state in hooks
 3. **Sync Direction**:
-   - Load: Supabase → React state (on auth, visibility change, real-time events)
-   - Save: React state → Supabase (on state change, debounced)
-   - Real-time: Supabase Realtime → React state (cross-device sync)
+   - Load: API → React state (on auth, visibility change, real-time events)
+   - Save: React state → API (on state change, debounced)
+   - Real-time: API polling → React state (cross-device sync)
 
 ### Key Patterns
 - **Optimistic updates**: Update local state immediately, sync to database async
@@ -221,85 +221,26 @@ App.tsx (Main orchestrator)
 
 ---
 
-## Database / Supabase Patterns
+## Database and Authentication
 
-### Database Schema
-- **tasks table**: Main task storage with RLS (Row Level Security)
-- **tag_colors table**: User-specific tag color customizations
-
-### Field Naming Convention
-- **App (TypeScript)**: camelCase (e.g., `dueDate`, `recurrenceGroupId`)
-- **Database (PostgreSQL)**: snake_case (e.g., `due_date`, `recurrence_group_id`)
-- **Conversion**: Use `dbTaskToTask()` and `taskToDbTask()` in `supabaseStorage.ts`
-
-### Supabase Operations Pattern
-```typescript
-import { supabase } from './supabase';
-import { logger } from './logger';
-
-export const loadSomething = async (): Promise<SomeType[]> => {
-  try {
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError) {
-      logger.error('[loadSomething] Auth error:', authError);
-      return [];
-    }
-    if (!user) {
-      logger.debug('[loadSomething] No user authenticated');
-      return [];
-    }
-
-    const { data, error } = await supabase
-      .from('table_name')
-      .select('*')
-      .eq('user_id', user.id);
-
-    if (error) {
-      logger.error('[loadSomething] Failed to load:', error);
-      return [];
-    }
-
-    return data || [];
-  } catch (error) {
-    logger.error('[loadSomething] Exception:', error);
-    return [];
-  }
-};
-```
-
-### RLS (Row Level Security)
-- All tables use RLS policies to ensure users can only access their own data
-- Queries automatically filter by `user_id` due to RLS
-- Check Supabase Dashboard > Authentication > Policies for policy configuration
+- `server/` implements a same-origin Express API backed by PostgreSQL.
+- `src/utils/api.ts` handles requests and shared-login state.
+- `src/utils/taskStorage.ts` implements frontend task and tag storage.
+- Every data endpoint checks the shared server session. Credentials stay server-side.
+- Preserve task IDs, creation/modification dates, subtasks, and recurrence fields.
+- Throw on read/write failures so retries do not interpret failures as deletions.
+- Device sync polls every 15 seconds and reloads on visibility changes.
+- See `docs/railway-migration.md` for configuration and verified data migration.
 
 ---
 
 ## Error Handling
 
-### Try-Catch Pattern
-```typescript
-const someOperation = async () => {
-  try {
-    // Validate prerequisites
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      logger.error('[someOperation] User not authenticated');
-      return;
-    }
+### API Errors
 
-    // Perform operation
-    const result = await doWork();
-
-    logger.debug('[someOperation] Success:', result);
-    return result;
-
-  } catch (error) {
-    logger.error('[someOperation] Failed:', error);
-    // Handle gracefully - don't crash the app
-    throw error; // Re-throw if caller needs to handle
-  }
-};
-```
+Use `apiRequest()` for data access. It throws on errors and clears the frontend
+session when a protected endpoint returns 401. Let failed task saves propagate
+so the task hook retries; do not treat a failed load as an empty task list.
 
 ### User-Facing Errors
 - Show user-friendly messages, not raw stack traces
@@ -333,15 +274,16 @@ npm run test:coverage # Coverage reports
 ## Build & Deployment
 
 ### Environment Variables
-```bash
-VITE_SUPABASE_URL=https://xxxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=xxxxx
-VITE_LOG_LEVEL=debug|info|warn|error|silent  # Optional
-```
 
-### GitHub Actions
-- **Deploy to GitHub Pages**: Triggers on push to main
-- **Auto Version Bump**: Patches version on each commit to main
+Use `.env.example`: DATABASE_URL, AUTH_USERNAME, AUTH_PASSWORD, SESSION_SECRET,
+and APP_ORIGIN. Production uses NODE_ENV=production and an HTTPS APP_ORIGIN.
+No credentials are bundled into the frontend.
+
+### CI and Deployment
+
+- GitHub CI runs the build, frontend tests, and API tests against disposable PostgreSQL.
+- Railway builds the Dockerfile and serves the frontend and API together.
+- Do not truncate production databases or commit migration snapshots.
 
 ### Version Management
 - Current version in `package.json`
@@ -375,10 +317,10 @@ if (isDateOverdue(task.dueDate)) { /* ... */ }
 ```
 
 ### ID Generation
-**Always use `generateId()` from `supabaseStorage.ts` for new task IDs.**
+**Always use `generateId()` from `taskStorage.ts` for new task IDs.**
 
 ```typescript
-import { generateId } from '../utils/supabaseStorage';
+import { generateId } from '../utils/taskStorage';
 
 const newTask: Task = {
   id: generateId(), // Returns UUID-compliant format
@@ -446,5 +388,5 @@ Brief description of what this PR does and why it's needed.
 ### Security
 - Never log credentials or API keys
 - Store sensitive data in environment variables
-- RLS policies ensure user data isolation
-- Anon key is publishable (safe for client-side)
+- All task and tag routes require a server session
+- No database or login credentials belong in frontend environment variables

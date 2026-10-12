@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ViewType } from '../types';
 import { loadViewState, saveViewState } from '../utils/storage';
-import type { User } from '@supabase/supabase-js';
+import type { User } from '../types';
 import { logger } from '../utils/logger';
 import { formatDate, parseLocalDate } from '../utils/dateUtils';
 

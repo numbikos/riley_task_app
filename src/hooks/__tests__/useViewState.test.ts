@@ -3,7 +3,7 @@ process.env.TZ = 'America/Los_Angeles';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import type { User } from '@supabase/supabase-js';
+import type { User } from '../../types';
 import { useViewState } from '../useViewState';
 import { formatDate } from '../../utils/dateUtils';
 

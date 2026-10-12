@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Task, TaskUpdate } from './types';
-import { isSupabaseConfigured } from './utils/supabase';
 import { isDateToday, isDateTomorrow, isDateOverdue, formatDate } from './utils/dateUtils';
-import { loadTagColors } from './utils/supabaseStorage';
+import { loadTagColors } from './utils/taskStorage';
 import { useAuth } from './hooks/useAuth';
 import { useViewState } from './hooks/useViewState';
 import { useTaskManagement } from './hooks/useTaskManagement';
@@ -66,7 +65,6 @@ function App() {
     performDelete,
     undoDelete,
     undoCompletion,
-    loadUserData,
     deletedTask,
     setDeletedTask,
     completedTask,
@@ -142,13 +140,8 @@ function App() {
     }
   }, [user?.email]);
 
-  // Handle auth success
-  const handleAuthSuccess = useCallback(async () => {
-    resetToToday();
-    setTimeout(() => {
-      loadUserData();
-    }, 300);
-  }, [resetToToday, loadUserData]);
+  // Authentication state triggers task loading in useTaskManagement.
+  const handleAuthSuccess = useCallback(() => resetToToday(), [resetToToday]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {
@@ -467,49 +460,6 @@ function App() {
         return null;
     }
   };
-
-  // Show configuration error if Supabase is not configured
-  if (!isSupabaseConfigured()) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-main)',
-        color: 'var(--text-main)',
-        padding: '2rem',
-      }}>
-        <div style={{
-          maxWidth: '600px',
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--danger)',
-          borderRadius: '12px',
-          padding: '2rem',
-          boxShadow: 'var(--shadow-xl)',
-        }}>
-          <h2 style={{ color: 'var(--danger)', marginTop: 0, marginBottom: '1rem' }}>Configuration Error</h2>
-          <p style={{ marginBottom: '1rem', lineHeight: '1.6' }}>
-            Missing Supabase environment variables. Please create a <code style={{ background: '#2A2A2A', padding: '0.2rem 0.4rem', borderRadius: '4px' }}>.env</code> file in the root directory with:
-          </p>
-          <pre style={{
-            background: '#2A2A2A',
-            padding: '1rem',
-            borderRadius: '8px',
-            overflow: 'auto',
-            marginBottom: '1rem',
-            fontSize: '0.9rem',
-          }}>
-{`VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
-          </pre>
-          <p style={{ marginBottom: 0, fontSize: '0.9rem', color: '#888' }}>
-            See the README.md file for detailed setup instructions.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   // Show loading screen
   if (loading) {

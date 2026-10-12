@@ -1,6 +1,6 @@
 # Riley Task App
 
-A modern, Outlook-inspired task management app with recurring tasks, week view planner, and comprehensive task organization. Built with React, TypeScript, and Supabase for cloud storage and real-time synchronization.
+A modern, Outlook-inspired task management app with recurring tasks, week view planner, and comprehensive task organization. Built with React, TypeScript, and a PostgreSQL API hosted on Railway.
 
 ## Features
 
@@ -136,56 +136,30 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
 
 ### Cloud Storage & Authentication
 
-- **Supabase Integration**: All tasks are saved to Supabase (PostgreSQL database)
-- **User Authentication**: Sign up/sign in to access your tasks across devices
-- **Data Migration**: Automatically migrates existing localStorage data to Supabase on first login
-  - Shows migration notification when data is migrated
-- **Real-time Sync**: Changes sync automatically across devices using Supabase Realtime
-- **Row Level Security (RLS)**: Secure data access with user-based permissions
-- **Demo Tasks**: App initializes with demo tasks if no tasks exist
-
-### Notifications
-
-- **Auto-Renewal Notification**: Shows when recurring tasks are automatically extended
-- **Migration Notification**: Shows when localStorage data is migrated to Supabase
-- **Undo Notifications**: For both task deletion and completion
+- Tasks and tag colors persist in PostgreSQL on Railway.
+- One shared username and password protects all task APIs. There is no public signup.
+- Sessions use HttpOnly cookies and PostgreSQL, and survive application restarts.
+- Devices synchronize every 15 seconds while visible and refresh on tab focus.
+- Existing Supabase data can be exported and imported with verified migration tools.
 
 ## Getting Started
 
-### Prerequisites
+Use Node.js 22.12+ and a PostgreSQL database.
 
-1. A Supabase account and project ([sign up here](https://supabase.com))
-
-### Setup
-
-1. **Install dependencies:**
 ```bash
-npm install
-```
-
-2. **Set up Supabase:**
-   - Create a new Supabase project at https://supabase.com
-   - Go to your project's SQL Editor
-   - Run the SQL script from `supabase-schema.sql` to create the necessary tables and policies
-   - Go to Project Settings > API
-   - Copy your Project URL and anon/public key
-
-3. **Configure environment variables:**
-   - Create a `.env` file in the root directory
-   - Add your Supabase credentials:
-   ```
-   VITE_SUPABASE_URL=your_supabase_project_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
-
-4. **Start the development server:**
-```bash
+npm ci
+cp .env.example .env
+# Set your database URL, shared login, and random session secret in .env.
 npm run dev
 ```
 
-5. **Open your browser** to the URL shown (typically http://localhost:5173)
+Open http://localhost:5181. Vite proxies API requests to the backend on port 3000.
+The backend initializes the schema on startup. Use Riley's previous email as
+`AUTH_USERNAME` to retain her daily messages. The shared password must be at
+least 12 characters, and `SESSION_SECRET` at least 32 random characters.
 
-6. **Sign up or sign in** to start using the app. If you have existing localStorage data, it will be automatically migrated to Supabase on first login.
+Production setup, data export/import, and cutover instructions are in
+[the Railway migration guide](docs/railway-migration.md).
 
 ## Usage
 
@@ -284,141 +258,44 @@ The app provides several ways to navigate:
 
 ## Technical Details
 
-### Technology Stack
+The existing React/Vite interface talks to an Express API on the same origin.
+PostgreSQL stores tasks, tag colors, and login sessions. The API validates input,
+uses parameterized SQL and transactional writes, and checks the shared session
+on every data endpoint. Login attempts are rate limited and state-changing
+requests require the configured origin and an application header.
 
-- **Frontend Framework**: React 18 with TypeScript
-- **Build Tool**: Vite for fast development and optimized production builds
-- **Backend**: Supabase (PostgreSQL) for cloud data persistence
-- **Authentication**: Supabase Auth for user authentication
-- **Real-time**: Supabase Realtime for automatic data synchronization across devices
-- **Date Handling**: date-fns for date manipulation and formatting
-- **Testing**: Vitest with React Testing Library for unit and integration tests
+Recurrence generation, optimistic editing, undo, completed-task pagination,
+search, statistics, and local view preferences retain the existing frontend
+behavior. A failed refresh throws instead of appearing as an empty database.
 
-### Architecture
+The server lives in `server/`, the browser API and storage adapters in
+`src/utils/api.ts` and `src/utils/taskStorage.ts`, and migration tools in
+`scripts/`. `server/schema.sql` is the initial tracked database migration.
 
-- **Component-Based**: Modular React components for maintainability
-- **Custom Hooks**: 
-  - `useAuth`: Handles authentication state and user management
-  - `useTaskManagement`: Core task CRUD operations and undo functionality
-  - `useRecurringTasks`: Recurring task logic and auto-renewal
-  - `useViewState`: View navigation and date state management
-- **Utility Functions**: Separated concerns for date operations, task filtering, storage, and recurring task helpers
-- **Type Safety**: Full TypeScript coverage with comprehensive type definitions
+## Testing
 
-### Features
-
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Touch Gestures**: Swipe left/right in Week view to navigate between weeks
-- **Drag and Drop**: Reschedule tasks by dragging between days in Week view
-- **Keyboard Navigation**: Full keyboard support for search and navigation
-- **Real-time Sync**: Changes sync automatically across all devices
-- **Row Level Security (RLS)**: Secure data access with user-based permissions in Supabase
-- **Data Migration**: Automatic migration from localStorage to Supabase on first login
-- **Error Handling**: Comprehensive error handling and user feedback
-
-### Testing
-
-The app includes comprehensive test coverage:
-
-- **Unit Tests**: Individual component and utility function tests
-- **Integration Tests**: Component interaction and workflow tests
-- **Test Runner**: Vitest with React Testing Library
-- **Coverage Reports**: Generate coverage reports with `npm run test:coverage`
-- **Test UI**: Interactive test UI available with `npm run test:ui`
-
-Run tests with:
 ```bash
-npm test              # Run tests in watch mode
-npm run test:ui       # Open interactive test UI
-npm run test:coverage # Generate coverage report
+npm test -- --run
+npm run build
+# Point TEST_DATABASE_URL at an isolated, disposable PostgreSQL database:
+npm run test:api
 ```
 
-## Project Structure
+The API tests cover protected routes, credentials, session persistence and
+revocation, origin protection, task round trips, pagination, tags, and verified
+snapshot import. They truncate the test tables. CI provides PostgreSQL 18.
 
-```
-src/
-├── components/          # React components
-│   ├── __tests__/      # Component tests
-│   ├── AllTasksView.tsx
-│   ├── Auth.tsx        # Authentication component
-│   ├── CompletedView.tsx
-│   ├── CompletionUndoNotification.tsx
-│   ├── DayView.tsx
-│   ├── DeleteRecurringDialog.tsx
-│   ├── GlobalSearch.tsx
-│   ├── GroupedTaskList.tsx
-│   ├── NavigationHeader.tsx
-│   ├── RecurringTaskGroup.tsx
-│   ├── TagManager.tsx
-│   ├── TaskCard.tsx
-│   ├── TaskForm.tsx
-│   ├── TodayView.tsx
-│   ├── TomorrowView.tsx
-│   ├── UndoNotification.tsx
-│   └── WeekView.tsx
-├── hooks/              # Custom React hooks
-│   ├── __tests__/     # Hook tests
-│   ├── useAuth.ts
-│   ├── useRecurringTasks.ts
-│   ├── useTaskManagement.ts
-│   └── useViewState.ts
-├── utils/              # Utility functions
-│   ├── __tests__/     # Utility tests
-│   ├── dateUtils.ts
-│   ├── logger.ts
-│   ├── recurringTaskHelpers.ts
-│   ├── storage.ts
-│   ├── supabase.ts
-│   ├── supabaseStorage.ts
-│   ├── taskOperations.ts
-│   └── taskUtils.ts
-├── test/               # Test setup
-│   └── setup.ts
-├── App.tsx             # Main app component
-├── App.css             # Global styles
-├── main.tsx            # App entry point
-└── types.ts            # TypeScript type definitions
-
-supabase-schema.sql     # Database schema for Supabase
-```
-
-## Building for Production
+## Production
 
 ```bash
 npm run build
+NODE_ENV=production npm start
 ```
 
-The built files will be in the `dist` directory.
+Configure all server variables from `.env.example`, including an HTTPS
+`APP_ORIGIN` without a trailing slash. Railway uses the checked-in Dockerfile
+and `railway.json`; the app listens on `PORT` (default 3000) and `/health` verifies
+a database connection. The browser needs no database credentials or Supabase keys.
 
-## Deploying to GitHub Pages
-
-This app can be deployed to GitHub Pages using GitHub Actions. Follow these steps:
-
-### 1. Enable GitHub Pages
-1. Go to your repository on GitHub
-2. Navigate to **Settings** → **Pages**
-3. Under **Source**, select **GitHub Actions**
-
-### 2. Add GitHub Secrets
-1. Go to **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Add these two secrets:
-   - Name: `VITE_SUPABASE_URL` → Value: Your Supabase project URL
-   - Name: `VITE_SUPABASE_ANON_KEY` → Value: Your Supabase anon key
-
-### 3. Push to Main Branch
-The GitHub Actions workflow will automatically:
-- Build your app with the environment variables
-- Deploy it to GitHub Pages
-- Your app will be available at: `https://yourusername.github.io/riley_task_app/`
-
-### Note on Base Path
-If your repository name is different from `riley_task_app`, update the `base` path in `vite.config.ts` to match your repository name.
-
-### Manual Deployment (Alternative)
-If you prefer to deploy manually:
-1. Build the app: `npm run build`
-2. Go to repository **Settings** → **Pages**
-3. Select **Deploy from a branch**
-4. Choose the `main` branch and `/dist` folder
-5. Note: You'll need to inject environment variables into the built files manually, or use a service like Netlify/Vercel that supports environment variables.
+See [the migration guide](docs/railway-migration.md) for the complete deployment
+and data cutover process.

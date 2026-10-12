@@ -58,3 +58,6 @@ Supabase Schema/*
 
 #Recommendations
 Recommendations/*
+# Private database migration snapshots
+backups/
+*-snapshot.json

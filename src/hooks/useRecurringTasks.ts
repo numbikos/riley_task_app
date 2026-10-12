@@ -1,5 +1,5 @@
 import { Task, TaskUpdate } from '../types';
-import { generateId, deleteTasks } from '../utils/supabaseStorage';
+import { generateId, deleteTasks } from '../utils/taskStorage';
 import { normalizeTags } from '../utils/taskOperations';
 import {
   createRecurringTaskInstances,

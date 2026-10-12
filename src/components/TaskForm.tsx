@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Task, Subtask, TaskUpdate, getTagColor, RecurrenceType } from '../types';
-import { generateId, loadTags, loadTagColors } from '../utils/supabaseStorage';
+import { generateId, loadTags, loadTagColors } from '../utils/taskStorage';
 import { formatDate } from '../utils/dateUtils';
 import { haveSubtasksChanged } from '../utils/recurringTaskHelpers';
 import { logger } from '../utils/logger';

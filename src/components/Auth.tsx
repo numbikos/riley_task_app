@@ -1,50 +1,26 @@
 import { useState, FormEvent } from 'react';
-import { supabase } from '../utils/supabase';
+import { signIn } from '../utils/api';
 
 interface AuthProps {
   onAuthSuccess: () => void;
 }
 
 export default function Auth({ onAuthSuccess }: AuthProps) {
-  const [isSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setMessage(null);
 
     try {
-      if (isSignUp) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-
-        if (signUpError) {
-          setError(signUpError.message);
-        } else {
-          setMessage('Check your email for the confirmation link!');
-        }
-      } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (signInError) {
-          setError(signInError.message);
-        } else {
-          onAuthSuccess();
-        }
-      }
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred');
+      await signIn(email, password);
+      onAuthSuccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not sign in. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -87,22 +63,24 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           marginBottom: '2rem',
           fontSize: '1rem',
         }}>
-          {isSignUp ? 'Create your account' : 'Sign in to your account'}
+          Sign in with your shared login
         </p>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{
+            <label htmlFor="login-username" style={{
               display: 'block',
               marginBottom: '0.5rem',
               color: 'var(--text-secondary)',
               fontSize: '0.9rem',
               fontWeight: 500,
             }}>
-              Email
+              Username
             </label>
             <input
-              type="email"
+              type="text"
+              id="login-username"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -130,7 +108,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{
+            <label htmlFor="login-password" style={{
               display: 'block',
               marginBottom: '0.5rem',
               color: 'var(--text-secondary)',
@@ -141,11 +119,13 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             </label>
             <input
               type="password"
+              id="login-password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
-              minLength={6}
+              minLength={8}
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -182,20 +162,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             </div>
           )}
 
-          {message && (
-            <div style={{
-              padding: '0.75rem',
-              background: 'rgba(16, 185, 129, 0.1)',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
-              borderRadius: 'var(--radius-md)',
-              color: 'var(--success)',
-              marginBottom: '1rem',
-              fontSize: '0.9rem',
-            }}>
-              {message}
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
@@ -226,7 +192,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               e.currentTarget.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.3)';
             }}
           >
-            {loading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
       </div>

@@ -1,6 +1,6 @@
 import { Task, Subtask, RecurrenceType } from '../types';
 import { generateRecurringDates, formatDate } from './dateUtils';
-import { generateId } from './supabaseStorage';
+import { generateId } from './taskStorage';
 
 const RECURRING_INSTANCE_COUNT = 10;
 

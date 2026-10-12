@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Read current version
         id: version
@@ -62,9 +62,10 @@ jobs:
 
       - name: Commit version bump
         run: |
+          npm install --package-lock-only --ignore-scripts
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add package.json
+          git add package.json package-lock.json
           git commit -m "chore: bump version to ${{ steps.bump.outputs.new }}" || exit 0
           git push
 
