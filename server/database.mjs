@@ -21,8 +21,9 @@ export const tasksSchema = z.array(taskSchema).superRefine((tasks, ctx) => {
 });
 export const snapshotSchema = z.object({ version: z.literal(1), sourceUserId: z.string().min(1), exportedAt: z.iso.datetime(), tasks: tasksSchema, colors: colorsSchema });
 export function toTask(row) {
+  if (!row.created_at || !row.last_modified) throw new Error('A task is missing its creation or modification date. Check the source record before migration.');
   return {
-    id: row.id, title: row.title, dueDate: row.due_date, completed: row.completed, subtasks: row.subtasks ?? [], tags: row.tags ?? [],
+    id: row.id, title: row.title, dueDate: row.due_date, completed: row.completed ?? false, subtasks: row.subtasks ?? [], tags: row.tags ?? [],
     createdAt: new Date(row.created_at).toISOString(), lastModified: new Date(row.last_modified).toISOString(),
     recurrence: row.recurrence, recurrenceGroupId: row.recurrence_group_id,
     ...(row.recurrence_multiplier != null ? { recurrenceMultiplier: row.recurrence_multiplier } : {}),
