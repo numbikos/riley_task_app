@@ -156,7 +156,7 @@ npm run dev
 Open http://localhost:5181. Vite proxies API requests to the backend on port 3000.
 The backend initializes the schema on startup. Use Riley's previous email as
 `AUTH_USERNAME` to retain her daily messages. The shared password must be at
-least 12 characters, and `SESSION_SECRET` at least 32 random characters.
+least 8 characters, and `SESSION_SECRET` at least 32 random characters.
 
 Production setup, data export/import, and cutover instructions are in
 [the Railway migration guide](docs/railway-migration.md).
