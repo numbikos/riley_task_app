@@ -2,6 +2,36 @@ import { Task, Subtask } from '../types';
 import { supabase } from './supabase';
 import { logger } from './logger';
 
+/** Export the signed-in user's complete dataset for the Railway migration. */
+export async function createDataBackup() {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error('Sign in before downloading a backup.');
+  async function readAll(table: 'tasks' | 'tag_colors') {
+    const rows = [];
+    let total: number | null = null;
+    for (;;) {
+      const page = await supabase.from(table).select('*', { count: 'exact' })
+        .eq('user_id', user!.id).order('id').range(rows.length, rows.length + 499);
+      if (page.error) throw new Error('Could not download the backup. Please try again.');
+      if (page.count === null || (total !== null && page.count !== total)) throw new Error('Tasks changed during backup. Pause edits and try again.');
+      total = page.count;
+      const data = page.data ?? [];
+      rows.push(...data);
+      if (rows.length === total) return rows;
+      if (!data.length || rows.length > total) throw new Error('Incomplete backup. Please try again.');
+    }
+  }
+  const tasks = (await readAll('tasks') as DatabaseTask[]).map(dbTaskToTask).map(task => ({
+    ...task, completed: task.completed ?? false,
+    createdAt: new Date(task.createdAt).toISOString(), lastModified: new Date(task.lastModified).toISOString(),
+  }));
+  if (new Set(tasks.map(task => task.id)).size !== tasks.length) throw new Error('Tasks changed during backup. Pause edits and try again.');
+  const colorRows = await readAll('tag_colors');
+  const colors: Record<string, string> = Object.fromEntries(colorRows.map(row => [row.tag.toLowerCase(), row.color]));
+  if (Object.keys(colors).length !== colorRows.length) throw new Error('Duplicate tag colors need to be resolved before backup.');
+  return { version: 1 as const, sourceUserId: user.id, exportedAt: new Date().toISOString(), tasks, colors };
+}
+
 // Database task type (snake_case for Supabase)
 interface DatabaseTask {
   id: string;

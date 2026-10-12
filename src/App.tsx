@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Task, TaskUpdate } from './types';
 import { isSupabaseConfigured } from './utils/supabase';
 import { isDateToday, isDateTomorrow, isDateOverdue, formatDate } from './utils/dateUtils';
-import { loadTagColors } from './utils/supabaseStorage';
+import { loadTagColors, createDataBackup } from './utils/supabaseStorage';
 import { useAuth } from './hooks/useAuth';
 import { useViewState } from './hooks/useViewState';
 import { useTaskManagement } from './hooks/useTaskManagement';
@@ -103,6 +103,7 @@ function App() {
   } | null>(null);
   const [showTagManager, setShowTagManager] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
   const [showLoveMessage, setShowLoveMessage] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [isMobile, setIsMobile] = useState<boolean>(() => {
@@ -149,6 +150,26 @@ function App() {
       loadUserData();
     }, 300);
   }, [resetToToday, loadUserData]);
+
+  const handleDownloadBackup = async () => {
+    setIsDownloadingBackup(true);
+    setShowUserMenu(false);
+    setMigrationNotification('Preparing your backup...');
+    try {
+      const backup = await createDataBackup();
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `riley-${new Date().toISOString().replace(/[:.]/g, '-')}-snapshot.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMigrationNotification(`Backup downloaded: ${backup.tasks.length} tasks and ${Object.keys(backup.colors).length} tag colors.`);
+    } catch (error) {
+      setMigrationNotification(error instanceof Error ? error.message : 'Could not download the backup. Please try again.');
+    } finally { setIsDownloadingBackup(false); }
+  };
 
   // Handle logout
   const handleLogout = useCallback(async () => {
@@ -627,6 +648,9 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
                 <div className="menu-overlay" onClick={() => setShowUserMenu(false)} />
                 <div className="user-menu-dropdown">
                   <div className="user-menu-email">{user?.email}</div>
+                  <button className="user-menu-item" disabled={isDownloadingBackup} onClick={() => void handleDownloadBackup()}>
+                    {isDownloadingBackup ? 'Preparing Backup...' : 'Download Backup'}
+                  </button>
                   <button 
                     className="user-menu-item"
                     onClick={(e) => {
