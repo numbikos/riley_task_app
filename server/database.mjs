@@ -12,10 +12,13 @@ export const taskSchema = z.object({
   completed: z.boolean(), subtasks: z.array(z.object({ id: z.string().min(1).max(200), text: z.string().max(10000), completed: z.boolean() })).max(1000),
   tags: z.array(z.string().min(1).max(200)).max(100), createdAt: z.iso.datetime({ offset: true }), lastModified: z.iso.datetime({ offset: true }),
   recurrence: z.enum([...frequency.options, 'custom']).nullable(), recurrenceGroupId: z.uuid().nullable(),
-  recurrenceMultiplier: z.number().int().min(1).max(50).optional(), customFrequency: frequency.optional(),
+  recurrenceMultiplier: z.number().int().min(1).max(50).optional(), customFrequency: frequency.nullish(),
   isLastInstance: z.boolean().default(false), autoRenew: z.boolean().default(false),
+}).transform(({ customFrequency, ...task }) => {
+  // Legacy Supabase backups encode an unused custom frequency as null.
+  return customFrequency == null ? task : { ...task, customFrequency };
 });
-export const colorsSchema = z.record(z.string().min(1).max(200), z.string().regex(/^#[0-9a-fA-F]{6}$/));
+export const colorsSchema = z.record(z.string().min(1).max(200), z.string().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/));
 export const tasksSchema = z.array(taskSchema).superRefine((tasks, ctx) => {
   if (new Set(tasks.map(task => task.id)).size !== tasks.length) ctx.addIssue({ code: 'custom', message: 'Duplicate task IDs' });
 });

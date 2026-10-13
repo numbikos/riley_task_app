@@ -96,6 +96,15 @@ test('authenticated HTTP import verifies a snapshot through the app private data
   assert.deepEqual(response.body, { tasks: 1, colors: 1 });
   assert.deepEqual((await agent.get('/api/tasks')).body.tasks, snapshot.tasks);
 });
+test('legacy Supabase backups retain recurrence fields and shorthand tag colors', async () => {
+  const agent = await login();
+  const legacyTask = task({ recurrence: 'daily', recurrenceMultiplier: undefined, customFrequency: null });
+  const snapshot = { version: 1, sourceUserId: 'source-user', exportedAt: new Date().toISOString(), tasks: [legacyTask], colors: { work: '#888' } };
+  await mutation(agent.post('/api/migration/import')).send(snapshot).expect(200);
+  const { customFrequency, ...expected } = JSON.parse(JSON.stringify(legacyTask));
+  assert.deepEqual((await agent.get('/api/tasks')).body.tasks, [expected]);
+  assert.deepEqual((await agent.get('/api/tag-colors')).body, snapshot.colors);
+});
 test('deployment bootstrap imports once and preserves subsequent edits across restarts', async () => {
   const snapshot = { version: 1, sourceUserId: 'source-user', exportedAt: new Date().toISOString(), tasks: [task()], colors: {} };
   assert.deepEqual(await bootstrapSnapshot(pool, snapshot), { imported: true, tasks: 1, colors: 0 });
