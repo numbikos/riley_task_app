@@ -120,6 +120,7 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
 ### User Interface
 
 - **User Menu**: Click user avatar in header to access:
+  - Download Backup: save all your tasks (including completed tasks) and tag colors as JSON
   - User email display
   - Tag Manager access
   - Sign Out option
@@ -151,6 +152,10 @@ A modern, Outlook-inspired task management app with recurring tasks, week view p
 - **Undo Notifications**: For both task deletion and completion
 
 ## Getting Started
+
+For the Railway migration, pause task edits on other devices, open the user menu,
+and select **Download Backup**. The download includes your full signed-in dataset
+and checks that every page was received.
 
 ### Prerequisites
 
