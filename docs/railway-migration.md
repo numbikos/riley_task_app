@@ -10,14 +10,16 @@ key is needed by the running app.
 Use the `riley-task-app` project in the existing Railway workspace. Add the
 standard `postgres` template as `Postgres` and an app service from this repository.
 Connect the app to the migration branch for verification, then `main` for releases.
-The checked-in Dockerfile and `railway.json` handle builds, startup, and `/health`.
+The checked-in Dockerfile handles builds and startup. Set the service healthcheck
+to `/health`, its timeout to 120 seconds, and its restart policy to on failure
+with 5 retries. The app listens on port 3000.
 
 Set the app's variables in the Railway dashboard:
 
 | Variable | Value |
 | --- | --- |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (private network) |
-| `AUTH_USERNAME` | Your shared username; use Riley's previous email to retain her daily messages |
+| `AUTH_USERNAME` | Your shared username; the configured login is `riley` |
 | `AUTH_PASSWORD` | A shared password of at least 8 characters, entered directly in Railway |
 | `SESSION_SECRET` | At least 32 random characters; generate with `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"` |
 | `APP_ORIGIN` | The app's full HTTPS origin, without a trailing slash |
@@ -110,13 +112,13 @@ first imports; it uses the same verification and empty-destination requirement.
    or when the app comes back into view. Verify recurring settings and pagination.
 6. Log out and confirm task endpoints reject unauthenticated requests. Restart
    the app and verify data and a valid signed-in session survive.
-7. Use the Railway URL going forward. The GitHub Pages deployment workflow is
-   removed, so the old static app is not overwritten by this backend migration.
-   Retire or redirect the old site only after successful cutover.
+7. After successful verification, merge the migration. The GitHub Pages workflow
+   publishes a redirect to Railway so existing bookmarks reach the new app.
+   Connect Railway to `main` for future releases.
 
 Do not delete or pause Supabase until the new app has been verified with live
-data. Before writes begin on Railway, rollback is simply returning to the old
-URL. Once Railway accepts new edits, those edits must be exported/reconciled
+data. Before writes begin on Railway, rollback is restoring the old frontend
+deployment. Once Railway accepts new edits, those edits must be exported/reconciled
 before reverting to Supabase; the databases do not synchronize with each other.
 
 ## Automated verification

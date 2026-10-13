@@ -293,8 +293,8 @@ NODE_ENV=production npm start
 ```
 
 Configure all server variables from `.env.example`, including an HTTPS
-`APP_ORIGIN` without a trailing slash. Railway uses the checked-in Dockerfile
-and `railway.json`; the app listens on `PORT` (default 3000) and `/health` verifies
+`APP_ORIGIN` without a trailing slash. Railway uses the checked-in Dockerfile;
+set the service healthcheck to `/health`. The app listens on `PORT` (default 3000) and verifies
 a database connection. The browser needs no database credentials or Supabase keys.
 
 See [the migration guide](docs/railway-migration.md) for the complete deployment
