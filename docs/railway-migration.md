@@ -87,9 +87,12 @@ expected before treating it as the final backup.
 
 For a managed first deployment without local database credentials, the same
 snapshot can be gzip-compressed, base64-encoded, and staged as the app's private
-`DATA_IMPORT_GZIP_BASE64` variable. Startup imports and verifies it before serving
+`DATA_IMPORT_GZIP_BASE64` variable. Railway limits each value to 32 KiB; split
+larger encoded backups into consecutive variables `DATA_IMPORT_GZIP_BASE64_1`,
+`DATA_IMPORT_GZIP_BASE64_2`, and so on, each below that limit. Use either the single
+variable or numbered parts. Startup imports and verifies it before serving
 requests and records a checksum in the same transaction. Subsequent restarts skip
-that completed import, preserving edits. Clear the variable after the first
+that completed import, preserving edits. Clear all import variables after the first
 successful deployment. Never put the snapshot in a frontend variable or Git.
 
 An authenticated `POST /api/migration/import` also accepts a snapshot for manual

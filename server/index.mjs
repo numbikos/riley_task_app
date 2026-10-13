@@ -17,11 +17,17 @@ if (origin.origin !== config.origin || (production && origin.protocol !== 'https
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 10, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000 });
 pool.on('error', error => console.error('[database] Connection failed:', error.code));
 await migrate(pool);
-if (process.env.DATA_IMPORT_GZIP_BASE64) {
-  const snapshot = JSON.parse(gunzipSync(Buffer.from(process.env.DATA_IMPORT_GZIP_BASE64, 'base64'), { maxOutputLength: 64 * 1024 * 1024 }).toString('utf8'));
+// Railway limits each variable to 32 KiB; larger backups use numbered parts.
+const importParts = Object.keys(process.env).filter(key => /^DATA_IMPORT_GZIP_BASE64_[1-9]\d*$/.test(key))
+  .sort((a, b) => Number(a.split('_').at(-1)) - Number(b.split('_').at(-1)));
+if (importParts.some((key, index) => key !== `DATA_IMPORT_GZIP_BASE64_${index + 1}`)) throw new Error('Initial backup parts must be numbered consecutively from 1.');
+const importData = process.env.DATA_IMPORT_GZIP_BASE64 || importParts.map(key => process.env[key]).join('');
+if (importData) {
+  const snapshot = JSON.parse(gunzipSync(Buffer.from(importData, 'base64'), { maxOutputLength: 64 * 1024 * 1024 }).toString('utf8'));
   const result = await bootstrapSnapshot(pool, snapshot);
   console.info('[migration] Initial data:', result);
   delete process.env.DATA_IMPORT_GZIP_BASE64;
+  for (const key of importParts) delete process.env[key];
 }
 const prune = setInterval(() => { pool.query('DELETE FROM app_sessions WHERE expire < now()').catch(error => console.error('[session] Cleanup failed:', error.code)); }, 60 * 60 * 1000).unref();
 const server = createApp({ pool, config }).listen(Number(process.env.PORT ?? 3000), '0.0.0.0', () => console.info('[server] Ready'));
