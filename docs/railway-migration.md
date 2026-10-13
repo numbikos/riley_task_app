@@ -35,7 +35,11 @@ The live source is `https://vrllahirhzfsvtujvdgu.supabase.co`. Supabase access m
 belong to that project. Export exactly Riley's user, including completed tasks;
 do not combine other users' data into the shared account.
 
-The preferred export uses a consistent, read-only PostgreSQL snapshot. In an
+The live Supabase app also has **Download Backup** in its user menu. Sign in
+as the owner whose tasks are moving, pause edits on other devices, and download
+the JSON file. It includes completed tasks and colors and matches this importer.
+
+The preferred programmatic export uses a consistent, read-only PostgreSQL snapshot. In an
 ignored `.env.migration.local` file on a trusted machine, set:
 
 ```dotenv
