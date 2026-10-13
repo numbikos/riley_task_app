@@ -11,8 +11,8 @@ const { mockDeleteTasks } = vi.hoisted(() => ({
   mockDeleteTasks: vi.fn(),
 }));
 
-vi.mock('../../utils/supabaseStorage', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../utils/supabaseStorage')>();
+vi.mock('../../utils/taskStorage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/taskStorage')>();
   return { ...actual, deleteTasks: mockDeleteTasks };
 });
 

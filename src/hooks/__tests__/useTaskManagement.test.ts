@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { User } from '@supabase/supabase-js';
+import type { User } from '../../types';
 import { Task } from '../../types';
 import { useTaskManagement } from '../useTaskManagement';
 
@@ -18,8 +18,8 @@ const {
   mockDeleteTasks: vi.fn(),
 }));
 
-vi.mock('../../utils/supabaseStorage', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../utils/supabaseStorage')>();
+vi.mock('../../utils/taskStorage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/taskStorage')>();
   return {
     ...actual,
     loadIncompleteTasks: mockLoadIncompleteTasks,
@@ -30,18 +30,7 @@ vi.mock('../../utils/supabaseStorage', async (importOriginal) => {
   };
 });
 
-vi.mock('../../utils/supabase', () => {
-  const channel = {
-    on: vi.fn(() => channel),
-    subscribe: vi.fn(() => channel),
-  };
-  return {
-    supabase: {
-      channel: vi.fn(() => channel),
-      removeChannel: vi.fn(),
-    },
-  };
-});
+vi.mock('../../utils/api', () => ({ subscribeTaskChanges: vi.fn(() => () => {}) }));
 
 vi.mock('../../utils/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

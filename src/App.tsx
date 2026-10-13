@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Task, TaskUpdate } from './types';
-import { isSupabaseConfigured } from './utils/supabase';
 import { isDateToday, isDateTomorrow, isDateOverdue, formatDate } from './utils/dateUtils';
-import { loadTagColors, createDataBackup } from './utils/supabaseStorage';
+import { loadTagColors } from './utils/taskStorage';
 import { useAuth } from './hooks/useAuth';
 import { useViewState } from './hooks/useViewState';
 import { useTaskManagement } from './hooks/useTaskManagement';
@@ -66,7 +65,6 @@ function App() {
     performDelete,
     undoDelete,
     undoCompletion,
-    loadUserData,
     deletedTask,
     setDeletedTask,
     completedTask,
@@ -103,7 +101,6 @@ function App() {
   } | null>(null);
   const [showTagManager, setShowTagManager] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
   const [showLoveMessage, setShowLoveMessage] = useState(false);
   const [tagColors, setTagColors] = useState<Record<string, string>>({});
   const [isMobile, setIsMobile] = useState<boolean>(() => {
@@ -128,10 +125,9 @@ function App() {
     }
   }, [user, loading]);
 
-  // Show daily love message for target user
+  // The shared login keeps Riley's daily message after the auth migration.
   useEffect(() => {
-    if (!user?.email) return;
-    if (user.email !== TARGET_USER_EMAIL) return;
+    if (!user || (user.id !== 'shared' && user.email !== TARGET_USER_EMAIL)) return;
 
     const today = getTodayDateString();
     const lastShown = getLastLoveMessageDate();
@@ -141,35 +137,10 @@ function App() {
       setLastLoveMessageDate(today);
       setShowLoveMessage(true);
     }
-  }, [user?.email]);
+  }, [user?.id, user?.email]);
 
-  // Handle auth success
-  const handleAuthSuccess = useCallback(async () => {
-    resetToToday();
-    setTimeout(() => {
-      loadUserData();
-    }, 300);
-  }, [resetToToday, loadUserData]);
-
-  const handleDownloadBackup = async () => {
-    setIsDownloadingBackup(true);
-    setShowUserMenu(false);
-    setMigrationNotification('Preparing your backup...');
-    try {
-      const backup = await createDataBackup();
-      const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `riley-${new Date().toISOString().replace(/[:.]/g, '-')}-snapshot.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setMigrationNotification(`Backup downloaded: ${backup.tasks.length} tasks and ${Object.keys(backup.colors).length} tag colors.`);
-    } catch (error) {
-      setMigrationNotification(error instanceof Error ? error.message : 'Could not download the backup. Please try again.');
-    } finally { setIsDownloadingBackup(false); }
-  };
+  // Authentication state triggers task loading in useTaskManagement.
+  const handleAuthSuccess = useCallback(() => resetToToday(), [resetToToday]);
 
   // Handle logout
   const handleLogout = useCallback(async () => {
@@ -489,49 +460,6 @@ function App() {
     }
   };
 
-  // Show configuration error if Supabase is not configured
-  if (!isSupabaseConfigured()) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'var(--bg-main)',
-        color: 'var(--text-main)',
-        padding: '2rem',
-      }}>
-        <div style={{
-          maxWidth: '600px',
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--danger)',
-          borderRadius: '12px',
-          padding: '2rem',
-          boxShadow: 'var(--shadow-xl)',
-        }}>
-          <h2 style={{ color: 'var(--danger)', marginTop: 0, marginBottom: '1rem' }}>Configuration Error</h2>
-          <p style={{ marginBottom: '1rem', lineHeight: '1.6' }}>
-            Missing Supabase environment variables. Please create a <code style={{ background: '#2A2A2A', padding: '0.2rem 0.4rem', borderRadius: '4px' }}>.env</code> file in the root directory with:
-          </p>
-          <pre style={{
-            background: '#2A2A2A',
-            padding: '1rem',
-            borderRadius: '8px',
-            overflow: 'auto',
-            marginBottom: '1rem',
-            fontSize: '0.9rem',
-          }}>
-{`VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
-          </pre>
-          <p style={{ marginBottom: 0, fontSize: '0.9rem', color: '#888' }}>
-            See the README.md file for detailed setup instructions.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // Show loading screen
   if (loading) {
     return (
@@ -648,9 +576,6 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_key`}
                 <div className="menu-overlay" onClick={() => setShowUserMenu(false)} />
                 <div className="user-menu-dropdown">
                   <div className="user-menu-email">{user?.email}</div>
-                  <button className="user-menu-item" disabled={isDownloadingBackup} onClick={() => void handleDownloadBackup()}>
-                    {isDownloadingBackup ? 'Preparing Backup...' : 'Download Backup'}
-                  </button>
                   <button 
                     className="user-menu-item"
                     onClick={(e) => {

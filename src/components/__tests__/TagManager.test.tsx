@@ -7,7 +7,7 @@ const { mockLoadTags } = vi.hoisted(() => ({
   mockLoadTags: vi.fn(),
 }));
 
-vi.mock('../../utils/supabaseStorage', () => ({
+vi.mock('../../utils/taskStorage', () => ({
   loadTags: mockLoadTags,
   saveTags: vi.fn().mockResolvedValue(undefined),
   loadTagColors: vi.fn().mockResolvedValue({}),

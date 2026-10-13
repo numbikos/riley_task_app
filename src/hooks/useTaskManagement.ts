@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Task, TaskUpdate } from '../types';
-import { loadIncompleteTasks, loadCompletedTasks, loadTasksByIds, saveTasks, deleteTasks as deleteTasksFromDatabase, generateId } from '../utils/supabaseStorage';
-import { supabase } from '../utils/supabase';
+import { loadIncompleteTasks, loadCompletedTasks, loadTasksByIds, saveTasks, deleteTasks as deleteTasksFromDatabase, generateId } from '../utils/taskStorage';
+import { subscribeTaskChanges } from '../utils/api';
 import { normalizeTags } from '../utils/taskOperations';
 import { logger } from '../utils/logger';
-import type { User } from '@supabase/supabase-js';
+import type { User } from '../types';
 
 const RELOAD_DEBOUNCE_MS = 2000;
 const AUTH_DELAY_MS = 300;
@@ -97,7 +97,7 @@ export const useTaskManagement = (user: User | null) => {
 
     try {
       setIsLoadingFromDatabase(true); // Prevent save effect from running
-      logger.debug('[loadUserData] Loading tasks from Supabase (split loading)...');
+      logger.debug('[loadUserData] Loading tasks from the database (split loading)...');
 
       // Set a timeout to prevent infinite loading
       const loadWithTimeout = <T,>(promise: Promise<T>, label: string): Promise<T> => {
@@ -387,7 +387,7 @@ export const useTaskManagement = (user: User | null) => {
     }
   }, [user]);
 
-  // Save changed tasks to Supabase whenever they change
+  // Save changed tasks to the database whenever they change
   useEffect(() => {
     if (!user || !hasLoadedTasks || isLoadingFromDatabase || isSavingRef.current) {
       return;
@@ -400,7 +400,7 @@ export const useTaskManagement = (user: User | null) => {
       return;
     }
 
-    logger.debug(`[Save Effect] Saving ${changedTasks.length} changed tasks to Supabase`);
+    logger.debug(`[Save Effect] Saving ${changedTasks.length} changed tasks to the database`);
     isSavingRef.current = true;
     const savedSnapshots = changedTasks.map(task => [task.id, serializeTask(task)] as const);
     
@@ -439,86 +439,12 @@ export const useTaskManagement = (user: User | null) => {
     };
   }, []);
 
-  // Real-time subscription for task updates
+  // Keep devices synchronized while preserving unsaved local changes.
   useEffect(() => {
     if (!user) return;
-
-    logger.debug('[Real-time] Setting up subscription for user:', user.id);
-
-    // Debounce reloads to avoid excessive queries
-    let reloadTimeout: number | null = null;
-    const debouncedReload = async () => {
-      if (reloadTimeout) {
-        clearTimeout(reloadTimeout);
-      }
-      reloadTimeout = window.setTimeout(async () => {
-        logger.debug('[Real-time] Debounced reload triggered');
-        await refreshIncompleteTasks('Real-time');
-      }, 1000); // Increased debounce to 1000ms to allow rapid completions to settle
-    };
-    
-    const channel = supabase
-      .channel('tasks-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `user_id=eq.${user.id}`,
-        },
-        async (payload) => {
-          const newRecord = payload.new as { id?: string; title?: string; user_id?: string; completed?: boolean } | null;
-          const oldRecord = payload.old as { id?: string; user_id?: string } | null;
-          
-          logger.debug('[Real-time] Change detected:', {
-            eventType: payload.eventType,
-            table: payload.table,
-            new: newRecord ? {
-              id: newRecord.id,
-              title: newRecord.title,
-              user_id: newRecord.user_id,
-              completed: newRecord.completed,
-            } : null,
-            old: oldRecord ? {
-              id: oldRecord.id,
-              user_id: oldRecord.user_id,
-            } : null,
-          });
-          
-          // Check if the change is actually for this user
-          const changedUserId = newRecord?.user_id || oldRecord?.user_id;
-          if (changedUserId !== user.id) {
-            logger.warn(`[Real-time] Change detected for different user: ${changedUserId} vs ${user.id}`);
-            return;
-          }
-          
-          // Skip reload if we're currently saving (to prevent loop)
-          if (isSavingRef.current) {
-            logger.debug('[Real-time] Skipping reload - currently saving');
-            return;
-          }
-          
-          // Debounced reload to avoid excessive queries
-          debouncedReload();
-        }
-      )
-      .subscribe((status) => {
-        logger.debug('[Real-time] Subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          logger.debug('[Real-time] Successfully subscribed to task changes');
-        } else if (status === 'CHANNEL_ERROR') {
-          logger.error('[Real-time] Channel error - real-time updates may not work');
-        }
-      });
-
-    return () => {
-      logger.debug('[Real-time] Cleaning up subscription');
-      if (reloadTimeout) {
-        clearTimeout(reloadTimeout);
-      }
-      supabase.removeChannel(channel);
-    };
+    return subscribeTaskChanges(() => {
+      if (!isSavingRef.current) void refreshIncompleteTasks('Device sync');
+    });
   }, [user]);
 
   // Reload tasks when page becomes visible (helps with mobile)

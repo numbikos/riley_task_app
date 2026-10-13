@@ -1,3 +1,8 @@
+export interface User {
+  id: string;
+  email?: string;
+}
+
 export interface Subtask {
   id: string;
   text: string;

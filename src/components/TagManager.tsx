@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Task, getTagColor, DEFAULT_TAG_COLORS } from '../types';
-import { loadTags, saveTags, loadTagColors, saveTagColors, deleteTagColor } from '../utils/supabaseStorage';
+import { loadTags, saveTags, loadTagColors, saveTagColors, deleteTagColor } from '../utils/taskStorage';
 import { logger } from '../utils/logger';
 import { Trash2 } from 'lucide-react';
 
