@@ -125,10 +125,9 @@ function App() {
     }
   }, [user, loading]);
 
-  // Show daily love message for target user
+  // The shared login keeps Riley's daily message after the auth migration.
   useEffect(() => {
-    if (!user?.email) return;
-    if (user.email !== TARGET_USER_EMAIL) return;
+    if (!user || (user.id !== 'shared' && user.email !== TARGET_USER_EMAIL)) return;
 
     const today = getTodayDateString();
     const lastShown = getLastLoveMessageDate();
@@ -138,7 +137,7 @@ function App() {
       setLastLoveMessageDate(today);
       setShowLoveMessage(true);
     }
-  }, [user?.email]);
+  }, [user?.id, user?.email]);
 
   // Authentication state triggers task loading in useTaskManagement.
   const handleAuthSuccess = useCallback(() => resetToToday(), [resetToToday]);
